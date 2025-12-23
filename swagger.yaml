@@ -1,0 +1,3764 @@
+openapi: 3.0.0
+info:
+  title: Voter & Family Filter API
+  description: |
+    मतदाता और परिवार फ़िल्टर एपीआई
+
+    API for extracting voter data from PDFs using Gemini AI and managing voter lists with filtering, searching, and comparison capabilities.
+  version: "2.0"
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:5002
+    description: Development server
+  - url: http://0.0.0.0:5002
+    description: Local server
+
+tags:
+  - name: System
+    description: Health checks and system information
+  - name: Elections
+    description: Election management and metadata
+  - name: Voters
+    description: Voter management and querying
+  - name: Candidates
+    description: Election candidate management
+  - name: Families
+    description: Family grouping and search
+  - name: Polling
+    description: Polling stations and booths management
+  - name: Turnout
+    description: Voter turnout marking for field surveys
+  - name: Sentiment
+    description: Voter sentiment tagging and propagation
+  - name: Caste
+    description: Caste detection and demographic analysis
+  - name: Symbols
+    description: Election symbols for panchayat elections
+  - name: Map
+    description: Map visualization and coordinates
+  - name: Analytics
+    description: Campaign analytics and statistics
+  - name: Users
+    description: Campaign team user management
+  - name: Upload
+    description: PDF and JSON file uploads
+  - name: Extraction
+    description: PDF extraction job monitoring
+  - name: Statistics
+    description: Statistical analysis endpoints
+  - name: Comparison
+    description: Voter list comparison
+
+paths:
+  /:
+    get:
+      tags:
+        - System
+      summary: API Documentation
+      description: Get API welcome message and available endpoints
+      responses:
+        "200":
+          description: API information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  version:
+                    type: string
+                  endpoints:
+                    type: array
+                    items:
+                      type: string
+
+  /health:
+    get:
+      tags:
+        - System
+      summary: Health Check
+      description: Check API and database health status
+      responses:
+        "200":
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  timestamp:
+                    type: string
+                    format: date-time
+                  environment:
+                    type: string
+                    example: development
+                  version:
+                    type: string
+                    example: "2.0"
+                  components:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                      gemini_api:
+                        type: string
+                      upload_directory:
+                        type: string
+                  response_time_ms:
+                    type: number
+
+  /api/info:
+    get:
+      tags:
+        - System
+      summary: Get Available Voter Lists
+      description: Get information about all uploaded voter lists
+      responses:
+        "200":
+          description: List of voter lists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lists:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/VoterList"
+
+  /api/lists:
+    get:
+      tags:
+        - Voters
+      summary: Get Voter Lists (Alias)
+      description: |
+        Get all available voter lists with metadata and family tree status.
+        This is an alias for `/api/voter-lists` for frontend compatibility.
+      responses:
+        "200":
+          description: List of voter lists with family tree status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      lists:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            list_id:
+                              type: integer
+                            filename:
+                              type: string
+                            year:
+                              type: integer
+                            total_voters:
+                              type: integer
+                            status:
+                              type: string
+                            source_type:
+                              type: string
+                            family_tree_status:
+                              type: object
+                              properties:
+                                generated:
+                                  type: boolean
+                                processed_families:
+                                  type: integer
+                                total_families:
+                                  type: integer
+                                verified_count:
+                                  type: integer
+                                coverage_percent:
+                                  type: number
+
+  /api/voters:
+    get:
+      tags:
+        - Voters
+      summary: Get All Voters
+      description: Get paginated list of all voters
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+          description: Filter by specific voter list
+      responses:
+        "200":
+          description: List of voters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list_id:
+                    type: integer
+                  page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  voters:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Voter"
+
+  /api/voters/{voter_id}:
+    get:
+      tags:
+        - Voters
+      summary: Get Single Voter
+      description: Get detailed information about a specific voter
+      parameters:
+        - name: voter_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Voter details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Voter"
+        "404":
+          description: Voter not found
+
+  /api/voters/filter:
+    get:
+      tags:
+        - Voters
+      summary: Filter Voters
+      description: Filter voters by multiple criteria including sentiment. All responses include sentiment data for row highlighting.
+      parameters:
+        - name: ward_no
+          in: query
+          schema:
+            type: string
+        - name: min_age
+          in: query
+          schema:
+            type: integer
+        - name: max_age
+          in: query
+          schema:
+            type: integer
+        - name: gender
+          in: query
+          schema:
+            type: string
+            enum: [Male, Female, पु, म]
+        - name: house_no
+          in: query
+          schema:
+            type: string
+        - name: sentiment
+          in: query
+          schema:
+            type: string
+            enum: [support, oppose, swing, neutral, unknown]
+          description: Filter by voter sentiment
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Filtered voters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list_id:
+                    type: integer
+                  total:
+                    type: integer
+                  filters:
+                    type: object
+                  voters:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Voter"
+
+  /api/voters/search:
+    get:
+      tags:
+        - Voters
+      summary: Search Voters
+      description: Search voters by name (supports Hindi)
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query (voter name)
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list_id:
+                    type: integer
+                  query:
+                    type: string
+                  total:
+                    type: integer
+                  voters:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Voter"
+
+  /api/wards:
+    get:
+      tags:
+        - Voters
+      summary: Get All Wards
+      description: Get list of all wards with voter counts
+      parameters:
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of wards
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list_id:
+                    type: integer
+                  wards:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ward_id:
+                          type: integer
+                        ward_no:
+                          type: string
+                        voter_count:
+                          type: integer
+
+  /api/families:
+    get:
+      tags:
+        - Families
+      summary: Get All Families
+      description: Get families grouped by ward and house number
+      parameters:
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: List of families
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list_id:
+                    type: integer
+                  page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  families:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Family"
+
+  /api/families/search:
+    get:
+      tags:
+        - Families
+      summary: Search Families
+      description: Search for families by ward and house number
+      parameters:
+        - name: ward_no
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: house_no
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Family found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Family"
+        "404":
+          description: Family not found
+
+  /api/stats:
+    get:
+      tags:
+        - Statistics
+      summary: Overall Statistics
+      description: |
+        Get comprehensive voter statistics including metadata, ward statistics,
+        sentiment breakdown, turnout summary, and booth-level stats.
+      parameters:
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+          description: Voter list ID (uses default if not provided)
+      responses:
+        "200":
+          description: Complete statistics including booth and turnout data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  metadata:
+                    type: object
+                    properties:
+                      filename:
+                        type: string
+                      imported_at:
+                        type: string
+                        format: date-time
+                      total_voters:
+                        type: integer
+                      total_wards:
+                        type: integer
+                      total_booths:
+                        type: integer
+                      sentiment_counts:
+                        type: object
+                        properties:
+                          support:
+                            type: integer
+                          oppose:
+                            type: integer
+                          swing:
+                            type: integer
+                          neutral:
+                            type: integer
+                          unknown:
+                            type: integer
+                      turnout_summary:
+                        type: object
+                        properties:
+                          marked:
+                            type: integer
+                            description: Number of voters with turnout status marked
+                          unmarked:
+                            type: integer
+                            description: Number of voters without turnout status
+                          coverage_percent:
+                            type: number
+                            description: Percentage of voters surveyed
+                          will_vote:
+                            type: integer
+                            description: Voters who indicated they will vote
+                          projected_turnout_percent:
+                            type: number
+                            description: Projected turnout based on survey
+                  ward_stats:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ward_no:
+                          type: string
+                        voters:
+                          type: integer
+                        families:
+                          type: integer
+                        males:
+                          type: integer
+                        females:
+                          type: integer
+                        largest_family:
+                          type: integer
+                        sentiment_counts:
+                          type: object
+                          properties:
+                            support:
+                              type: integer
+                            oppose:
+                              type: integer
+                            swing:
+                              type: integer
+                            neutral:
+                              type: integer
+                            unknown:
+                              type: integer
+                  booth_stats:
+                    type: array
+                    description: Per-booth statistics with sentiment and turnout data
+                    items:
+                      type: object
+                      properties:
+                        polling_booth_id:
+                          type: integer
+                        booth_code:
+                          type: string
+                        booth_name:
+                          type: string
+                        station_code:
+                          type: string
+                        station_name:
+                          type: string
+                        ward_no:
+                          type: string
+                        total_voters:
+                          type: integer
+                        male_count:
+                          type: integer
+                        female_count:
+                          type: integer
+                        sentiment_counts:
+                          type: object
+                          properties:
+                            support:
+                              type: integer
+                            oppose:
+                              type: integer
+                            swing:
+                              type: integer
+                            neutral:
+                              type: integer
+                            unknown:
+                              type: integer
+                        turnout_counts:
+                          type: object
+                          properties:
+                            marked:
+                              type: integer
+                            unmarked:
+                              type: integer
+                            will_vote:
+                              type: integer
+                            wont_vote:
+                              type: integer
+                            already_voted:
+                              type: integer
+                        support_percent:
+                          type: number
+                        turnout_coverage_percent:
+                          type: number
+                        projected_turnout_percent:
+                          type: number
+
+  /api/stats/wards:
+    get:
+      tags:
+        - Statistics
+      summary: Ward Statistics
+      description: Get statistics for each ward
+      responses:
+        "200":
+          description: Ward-wise statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list_id:
+                    type: integer
+                  wards:
+                    type: array
+                    items:
+                      type: object
+
+  /api/stats/age-distribution:
+    get:
+      tags:
+        - Statistics
+      summary: Age Distribution
+      description: Get voter age distribution
+      responses:
+        "200":
+          description: Age distribution data
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/stats/gender:
+    get:
+      tags:
+        - Statistics
+      summary: Gender Distribution
+      description: Get gender-wise voter distribution
+      responses:
+        "200":
+          description: Gender distribution
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/upload/pdf:
+    post:
+      tags:
+        - Upload
+      summary: Upload PDF for Extraction
+      description: Upload a voter list PDF and extract data using Gemini AI
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF file to extract
+                election_name:
+                  type: string
+                  description: Optional name of the election
+                  example: "Lok Sabha 2024"
+                election_date:
+                  type: string
+                  description: Optional date of the election
+                  example: "2024-05-15"
+                max_workers:
+                  type: integer
+                  description: Number of parallel workers for extraction
+                  default: 5
+      responses:
+        "200":
+          description: Upload successful, extraction started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+                    example: "980bd06b-0af2-43bd-b648-b2f2a9adce03"
+                  status:
+                    type: string
+                    example: "processing"
+                  message:
+                    type: string
+                    example: "PDF upload successful. Extraction started."
+                  pdf_filename:
+                    type: string
+                    example: "voter_list.pdf"
+                  election_name:
+                    type: string
+                    example: "Lok Sabha 2024"
+                  election_date:
+                    type: string
+                    example: "2024-05-15"
+        "400":
+          description: Invalid file or upload error
+
+  /api/upload/json:
+    post:
+      tags:
+        - Upload
+      summary: Upload JSON Voter Data
+      description: Upload a hierarchical JSON file with voter data
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: JSON file with voter data
+      responses:
+        "200":
+          description: Upload and import successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  list_id:
+                    type: integer
+                  filename:
+                    type: string
+                  total_voters:
+                    type: integer
+
+  /api/extract-status/{job_id}:
+    get:
+      tags:
+        - Extraction
+      summary: Check Extraction Status
+      description: Check the status of a PDF extraction job with real-time progress updates
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "980bd06b-0af2-43bd-b648-b2f2a9adce03"
+      responses:
+        "200":
+          description: Job status with progress information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    example: "980bd06b-0af2-43bd-b648-b2f2a9adce03"
+                  status:
+                    type: string
+                    enum: [processing, completed, error]
+                    example: "completed"
+                  progress:
+                    type: integer
+                    description: Progress percentage (0-100)
+                    example: 100
+                  current_page:
+                    type: integer
+                    example: 54
+                  total_pages:
+                    type: integer
+                    example: 54
+                  voters_extracted:
+                    type: integer
+                    example: 237
+                  message:
+                    type: string
+                    example: "Extraction complete! 237 voters imported to database."
+                  pdf_filename:
+                    type: string
+                    example: "voter_list.pdf"
+                  election_name:
+                    type: string
+                    example: "Lok Sabha 2024"
+                  election_date:
+                    type: string
+                    example: "2024-05-15"
+                  list_id:
+                    type: integer
+                    description: Database ID of imported voter list (only when completed)
+                    example: 1
+                  output_file:
+                    type: string
+                    description: Filename of extracted JSON (only when completed)
+                    example: "20251202_014251_voter_list_hierarchical.json"
+                  error:
+                    type: string
+                    description: Error message (only when status is error)
+        "404":
+          description: Job not found
+
+  /api/download/{filename}:
+    get:
+      tags:
+        - Upload
+      summary: Download Extracted JSON
+      description: Download the hierarchical JSON file created from PDF extraction
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File download
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: File not found
+
+  /api/compare:
+    post:
+      tags:
+        - Comparison
+      summary: Compare Two Voter Lists
+      description: Compare two voter lists to find additions and deletions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                list1_id:
+                  type: integer
+                list2_id:
+                  type: integer
+      responses:
+        "200":
+          description: Comparison started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                  message:
+                    type: string
+
+  /api/compare/status/{job_id}:
+    get:
+      tags:
+        - Comparison
+      summary: Check Comparison Status
+      description: Check the status of a comparison job
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Comparison status
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/compare/results/{job_id}:
+    get:
+      tags:
+        - Comparison
+      summary: Get Comparison Results
+      description: Get detailed comparison results
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Comparison results
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/voters/list/{list_id}:
+    delete:
+      tags:
+        - Voters
+      summary: Delete Voter List
+      description: |
+        Delete a specific voter list and all associated data.
+
+        **This will delete:**
+        - All voters in this list
+        - The voter list record
+        - Associated comparison jobs and results
+        - Orphaned location records (if not used by other lists)
+      parameters:
+        - name: list_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: Voter list deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Voter list deleted successfully"
+                  list_id:
+                    type: integer
+                    example: 1
+                  deleted_voters:
+                    type: integer
+                    example: 237
+                  filename:
+                    type: string
+                    example: "voter_list.json"
+        "404":
+          description: Voter list not found
+        "500":
+          description: Server error
+
+  /api/voters/clear-all:
+    delete:
+      tags:
+        - Voters
+      summary: Clear All Data
+      description: |
+        ⚠️ **WARNING: This deletes EVERYTHING!**
+
+        Clears all voter data from the database including:
+        - All voter lists
+        - All voters
+        - All extraction jobs
+        - All comparison jobs
+        - All location data
+
+        Use with extreme caution - this action cannot be undone!
+      responses:
+        "200":
+          description: All data cleared successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "All voter data cleared successfully"
+                  lists_deleted:
+                    type: integer
+                    example: 3
+                  voters_deleted:
+                    type: integer
+                    example: 1847
+        "500":
+          description: Server error
+
+  /api/elections:
+    post:
+      tags:
+        - Elections
+      summary: Create Election
+      description: |
+        Create a new election linked to a voter list.
+        Each voter list can only have one election.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - list_id
+                - election_name
+                - election_date
+              properties:
+                list_id:
+                  type: integer
+                  description: Voter list ID (must exist)
+                  example: 1
+                election_name:
+                  type: string
+                  description: Name of the election
+                  example: "Panchayat Election 2024"
+                election_date:
+                  type: string
+                  format: date
+                  description: Date of the election
+                  example: "2024-05-15"
+                election_type:
+                  type: string
+                  enum: [panchayat, municipal, state, lok_sabha]
+                  default: panchayat
+                description:
+                  type: string
+                  example: "Ward Panch elections for all 10 wards"
+                status:
+                  type: string
+                  enum: [active, completed, archived]
+                  default: active
+      responses:
+        "201":
+          description: Election created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/Election"
+        "400":
+          description: Invalid request or election already exists
+        "404":
+          description: Voter list not found
+
+    get:
+      tags:
+        - Elections
+      summary: Get All Elections
+      description: Get all elections with optional filters
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, completed, archived]
+        - name: election_type
+          in: query
+          schema:
+            type: string
+            enum: [panchayat, municipal, state, lok_sabha]
+        - name: year
+          in: query
+          schema:
+            type: integer
+          description: Filter by election year
+      responses:
+        "200":
+          description: List of elections
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Election"
+                  meta:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+
+  /api/elections/{election_id}:
+    get:
+      tags:
+        - Elections
+      summary: Get Single Election
+      parameters:
+        - name: election_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Election details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/Election"
+        "404":
+          description: Election not found
+
+    put:
+      tags:
+        - Elections
+      summary: Update Election
+      description: |
+        Update election metadata. Cannot change list_id (immutable).
+      parameters:
+        - name: election_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                election_name:
+                  type: string
+                election_date:
+                  type: string
+                  format: date
+                election_type:
+                  type: string
+                  enum: [panchayat, municipal, state, lok_sabha]
+                description:
+                  type: string
+                status:
+                  type: string
+                  enum: [active, completed, archived]
+      responses:
+        "200":
+          description: Election updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/Election"
+
+    delete:
+      tags:
+        - Elections
+      summary: Delete or Archive Election
+      description: |
+        Soft delete (archive) by default. Set hard_delete=true for permanent deletion.
+      parameters:
+        - name: election_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: hard_delete
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Election deleted/archived
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  election_id:
+                    type: integer
+
+  /api/candidates:
+    post:
+      tags:
+        - Candidates
+      summary: Add Election Candidate
+      description: |
+        Add a candidate for election. Candidate can be selected from voter list (by voter_id) 
+        or entered manually. When selecting from voter list, their details are automatically copied.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - list_id
+              properties:
+                list_id:
+                  type: integer
+                  description: Voter list ID
+                  example: 1
+                voter_id:
+                  type: integer
+                  description: Voter ID (if selecting from voter list)
+                  example: 123
+                name:
+                  type: string
+                  description: Candidate name (required if voter_id not provided)
+                  example: "राकेश कुमार"
+                relative_name:
+                  type: string
+                  example: "छोटे सिंह"
+                age:
+                  type: integer
+                  example: 45
+                gender:
+                  type: string
+                  enum: [Male, Female]
+                  example: "Male"
+                house_no:
+                  type: string
+                  example: "15"
+                ward_no:
+                  type: string
+                  example: "3"
+                party_name:
+                  type: string
+                  example: "Independent"
+                party_symbol:
+                  type: string
+                  example: "Bicycle"
+                contact_number:
+                  type: string
+                  example: "9876543210"
+                education:
+                  type: string
+                  example: "Graduate"
+                notes:
+                  type: string
+                  example: "Popular local leader"
+      responses:
+        "201":
+          description: Candidate added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  candidate_id:
+                    type: integer
+                  candidate:
+                    $ref: "#/components/schemas/Candidate"
+        "400":
+          description: Invalid request
+        "404":
+          description: Voter list or voter not found
+
+    get:
+      tags:
+        - Candidates
+      summary: Get All Candidates
+      description: Get all candidates for a voter list
+      parameters:
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+          description: Filter by voter list
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, withdrawn, disqualified]
+            default: active
+        - name: ward_no
+          in: query
+          schema:
+            type: string
+          description: Filter by ward number
+      responses:
+        "200":
+          description: List of candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list_id:
+                    type: integer
+                  total:
+                    type: integer
+                  candidates:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Candidate"
+
+  /api/candidates/{candidate_id}:
+    get:
+      tags:
+        - Candidates
+      summary: Get Single Candidate
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Candidate details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Candidate"
+        "404":
+          description: Candidate not found
+
+    put:
+      tags:
+        - Candidates
+      summary: Update Candidate
+      description: Update candidate details
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                party_name:
+                  type: string
+                party_symbol:
+                  type: string
+                contact_number:
+                  type: string
+                education:
+                  type: string
+                status:
+                  type: string
+                  enum: [active, withdrawn, disqualified]
+                notes:
+                  type: string
+      responses:
+        "200":
+          description: Candidate updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  candidate:
+                    $ref: "#/components/schemas/Candidate"
+
+    delete:
+      tags:
+        - Candidates
+      summary: Delete Candidate
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Candidate deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  candidate_id:
+                    type: integer
+
+  # ==================== SENTIMENT ENDPOINTS ====================
+
+  /api/voters/bulk-tag:
+    post:
+      tags:
+        - Sentiment
+      summary: Bulk Tag Voter Sentiments
+      description: |
+        Tag multiple voters with the same sentiment in a single request.
+        Much more efficient than calling individual tag endpoint repeatedly.
+        Supports family propagation for each tagged voter.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - voter_ids
+                - sentiment
+              properties:
+                voter_ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: Array of voter IDs to tag (max 500)
+                  example: [123, 456, 789]
+                sentiment:
+                  type: string
+                  enum: [support, oppose, swing, neutral]
+                  description: Sentiment to apply to all voters
+                list_id:
+                  type: integer
+                  description: Voter list ID (uses default if not provided)
+                confidence:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                  default: 3
+                  description: Confidence level 1-5
+                source:
+                  type: string
+                  default: bulk_tag
+                  description: Source of tagging
+                user_id:
+                  type: integer
+                  default: 1
+                  description: User ID who is tagging
+                notes:
+                  type: string
+                  description: Optional notes
+                propagate_family:
+                  type: boolean
+                  default: true
+                  description: Whether to propagate sentiment to family members
+      responses:
+        "200":
+          description: Bulk tagging completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      tagged_count:
+                        type: integer
+                        description: Number of voters successfully tagged
+                      propagated_count:
+                        type: integer
+                        description: Total family members updated via propagation
+                      failed_count:
+                        type: integer
+                        description: Number of voters that failed to tag
+                      sentiment:
+                        type: string
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            voter_id:
+                              type: integer
+                            success:
+                              type: boolean
+                            propagated_to:
+                              type: integer
+                            error:
+                              type: string
+        "400":
+          description: Invalid request (missing voter_ids, invalid sentiment, or too many voters)
+        "404":
+          description: No voter list available
+
+  /api/voters/{voter_id}/tag:
+    post:
+      tags:
+        - Sentiment
+      summary: Tag Voter Sentiment
+      description: Manually tag a voter's sentiment and propagate to family members based on relationship rules
+      parameters:
+        - name: voter_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sentiment
+                - list_id
+              properties:
+                sentiment:
+                  type: string
+                  enum: [support, oppose, swing, neutral]
+                  description: Voter sentiment value
+                list_id:
+                  type: integer
+                  description: Voter list ID
+                confidence:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                  default: 3
+                  description: Confidence level 1-5
+                source:
+                  type: string
+                  enum:
+                    [
+                      field_survey,
+                      phone_call,
+                      known_contact,
+                      social_media,
+                      rally_attendance,
+                      historical,
+                      bulk_tag,
+                    ]
+                  default: field_survey
+                  description: Source of sentiment information
+                user_id:
+                  type: integer
+                  default: 1
+                notes:
+                  type: string
+      responses:
+        "200":
+          description: Voter tagged successfully with propagation results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  voter_id:
+                    type: integer
+                  sentiment:
+                    type: string
+                  propagated_count:
+                    type: integer
+                    description: Number of family members affected
+                  propagation_results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        voter_id:
+                          type: integer
+                        name:
+                          type: string
+                        sentiment:
+                          type: string
+                        confidence:
+                          type: number
+                        source:
+                          type: string
+        "400":
+          description: Invalid sentiment value
+        "404":
+          description: Voter not found
+    delete:
+      tags:
+        - Sentiment
+      summary: Remove Voter Sentiment Tag
+      description: Remove manual sentiment tag from a voter
+      parameters:
+        - name: voter_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                list_id:
+                  type: integer
+                  default: 1
+      responses:
+        "200":
+          description: Tag removed
+        "404":
+          description: Tag not found
+
+  /api/voters/{voter_id}/sentiment:
+    get:
+      tags:
+        - Sentiment
+      summary: Get Voter Sentiment
+      description: Get computed sentiment for a specific voter
+      parameters:
+        - name: voter_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: Voter sentiment details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  voter_id:
+                    type: integer
+                  name:
+                    type: string
+                  sentiment:
+                    type: string
+                    enum: [support, oppose, swing, neutral, unknown]
+                  confidence:
+                    type: number
+                  source:
+                    type: string
+                    description: How sentiment was determined (manual, spouse_inherit, parent_inherit, sibling_inherit, youth_rule)
+
+  /api/families/{ward_no}/{house_no}/sentiments:
+    get:
+      tags:
+        - Sentiment
+      summary: Get Family Sentiments
+      description: Get sentiment breakdown for all members in a household
+      parameters:
+        - name: ward_no
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: house_no
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: Family sentiment breakdown
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ward_no:
+                    type: string
+                  house_no:
+                    type: string
+                  total_members:
+                    type: integer
+                  sentiment_breakdown:
+                    type: object
+                    properties:
+                      support:
+                        type: integer
+                      oppose:
+                        type: integer
+                      swing:
+                        type: integer
+                      neutral:
+                        type: integer
+                      unknown:
+                        type: integer
+                  dominant_sentiment:
+                    type: string
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        voter_id:
+                          type: integer
+                        name:
+                          type: string
+                        sentiment:
+                          type: string
+                        confidence:
+                          type: number
+                        source:
+                          type: string
+
+  /api/sentiment/compute:
+    post:
+      tags:
+        - Sentiment
+      summary: Compute All Sentiments
+      description: Initialize or recompute sentiments for all voters. Applies youth rule (18-30 years marked as swing) and clears computed cache.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - list_id
+              properties:
+                list_id:
+                  type: integer
+      responses:
+        "200":
+          description: Computation complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  stats:
+                    type: object
+                    properties:
+                      total_voters:
+                        type: integer
+                      support:
+                        type: integer
+                      oppose:
+                        type: integer
+                      swing:
+                        type: integer
+                      neutral:
+                        type: integer
+                      unknown:
+                        type: integer
+                      tagged_count:
+                        type: integer
+                        description: Manually tagged voters
+                      inherited_count:
+                        type: integer
+                        description: Voters with inherited sentiment
+
+  # ==================== MAP ENDPOINTS ====================
+  /api/map/generate-coords:
+    post:
+      tags:
+        - Map
+      summary: Generate Geo Coordinates
+      description: Generate sunflower spiral coordinates for all houses in each ward for map visualization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - list_id
+              properties:
+                list_id:
+                  type: integer
+                center_lat:
+                  type: number
+                  default: 12.9716
+                  description: Center latitude for ward 1
+                center_lng:
+                  type: number
+                  default: 77.5946
+                  description: Center longitude for ward 1
+      responses:
+        "200":
+          description: Coordinates generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  total_coordinates:
+                    type: integer
+                  wards_processed:
+                    type: integer
+
+  /api/map/wards:
+    get:
+      tags:
+        - Map
+      summary: Get Ward Summary for Heatmap
+      description: Get sentiment statistics per ward for heatmap visualization
+      parameters:
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: Ward-level sentiment data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  wards:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ward_no:
+                          type: string
+                        total_voters:
+                          type: integer
+                        support:
+                          type: integer
+                        against:
+                          type: integer
+                        swing:
+                          type: integer
+                        unknown:
+                          type: integer
+                        support_pct:
+                          type: number
+                        against_pct:
+                          type: number
+                        dominant_sentiment:
+                          type: string
+
+  /api/map/ward/{ward_no}/houses:
+    get:
+      tags:
+        - Map
+      summary: Get House Positions for Ward
+      description: Get house positions with sentiment for ward map dots
+      parameters:
+        - name: ward_no
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: House positions with sentiments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ward_no:
+                    type: string
+                  houses:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        house_no:
+                          type: string
+                        latitude:
+                          type: number
+                        longitude:
+                          type: number
+                        total_voters:
+                          type: integer
+                        support:
+                          type: integer
+                        against:
+                          type: integer
+                        swing:
+                          type: integer
+                        dominant_sentiment:
+                          type: string
+                        color:
+                          type: string
+                          description: Hex color code for map dot
+
+  # ==================== STATISTICS ENDPOINTS ====================
+  /api/stats/overview:
+    get:
+      tags:
+        - Statistics
+      summary: Get Sentiment Overview
+      description: Get overall sentiment statistics across all voters
+      parameters:
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: Overall statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_voters:
+                    type: integer
+                  sentiment_breakdown:
+                    type: object
+                    properties:
+                      support:
+                        type: integer
+                      against:
+                        type: integer
+                      swing:
+                        type: integer
+                      unknown:
+                        type: integer
+                  percentages:
+                    type: object
+                    properties:
+                      support:
+                        type: number
+                      against:
+                        type: number
+                      swing:
+                        type: number
+                      unknown:
+                        type: number
+                  tagged_count:
+                    type: integer
+                    description: Number of manually tagged voters
+                  coverage_pct:
+                    type: number
+                    description: Percentage of voters with known sentiment
+
+  /api/stats/targets:
+    get:
+      tags:
+        - Statistics
+      summary: Get Target Voters
+      description: Get prioritized list of voters to canvass (swing and unknown voters)
+      parameters:
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: ward_no
+          in: query
+          schema:
+            type: string
+            description: Filter by ward
+      responses:
+        "200":
+          description: Target voters list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  targets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        voter_id:
+                          type: integer
+                        name:
+                          type: string
+                        age:
+                          type: integer
+                        house_no:
+                          type: string
+                        ward_no:
+                          type: string
+                        sentiment:
+                          type: string
+                        priority:
+                          type: string
+                          enum: [high, medium, low]
+                          description: Canvassing priority
+
+  # ==================== HISTORY ENDPOINTS ====================
+  /api/history/voter/{voter_id}:
+    get:
+      tags:
+        - History
+      summary: Get Voter Sentiment History
+      description: Get audit trail of sentiment changes for a voter
+      parameters:
+        - name: voter_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: Sentiment history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  voter_id:
+                    type: integer
+                  history:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        old_sentiment:
+                          type: string
+                        new_sentiment:
+                          type: string
+                        source:
+                          type: string
+                        changed_by:
+                          type: string
+                        changed_at:
+                          type: string
+                          format: date-time
+                        notes:
+                          type: string
+
+  # ==================== ELECTION SYMBOLS ENDPOINTS ====================
+  /api/symbols:
+    get:
+      tags:
+        - Symbols
+      summary: Get All Election Symbols
+      description: Returns list of all 56 available election symbols for panchayat elections
+      parameters:
+        - name: lang
+          in: query
+          schema:
+            type: string
+            enum: [hi, en]
+          description: Language filter (hi=Hindi only, en=English only)
+      responses:
+        "200":
+          description: List of election symbols
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      symbols:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name_hi:
+                              type: string
+                              description: Symbol name in Hindi
+                            name_en:
+                              type: string
+                              description: Symbol name in English
+                      total:
+                        type: integer
+
+  /api/symbols/{symbol_id}:
+    get:
+      tags:
+        - Symbols
+      summary: Get Symbol by ID
+      description: Get a single election symbol by its ID
+      parameters:
+        - name: symbol_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Symbol details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name_hi:
+                        type: string
+                      name_en:
+                        type: string
+        "404":
+          description: Symbol not found
+
+  /api/symbols/search:
+    get:
+      tags:
+        - Symbols
+      summary: Search Symbols
+      description: Search symbols by name in Hindi or English
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query (searches in both Hindi and English names)
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      query:
+                        type: string
+                      symbols:
+                        type: array
+                        items:
+                          type: object
+                      total:
+                        type: integer
+
+  # ==================== POLLING STATION/BOOTH ENDPOINTS ====================
+  /api/polling-stations:
+    get:
+      tags:
+        - Polling
+      summary: List Polling Stations
+      description: Get all polling stations with booth counts and voter counts
+      parameters:
+        - name: list_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Voter list ID
+      responses:
+        "200":
+          description: List of polling stations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      list_id:
+                        type: integer
+                      polling_stations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            polling_station_id:
+                              type: integer
+                            code:
+                              type: string
+                            name:
+                              type: string
+                            ward_id:
+                              type: integer
+                            booth_count:
+                              type: integer
+                            voter_count:
+                              type: integer
+                      total:
+                        type: integer
+
+  /api/polling-stations/{id}:
+    get:
+      tags:
+        - Polling
+      summary: Get Polling Station Details
+      description: Get detailed information about a specific polling station including its booths and voters
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Polling station ID
+        - name: list_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Voter list ID
+        - name: include_voters
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include voter list (default false)
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number for voters
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 50
+          description: Voters per page
+      responses:
+        "200":
+          description: Polling station details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      polling_station:
+                        type: object
+                        properties:
+                          polling_station_id:
+                            type: integer
+                          code:
+                            type: string
+                          name:
+                            type: string
+                          ward_id:
+                            type: integer
+                      booths:
+                        type: array
+                        items:
+                          type: object
+                      voter_count:
+                        type: integer
+                      voters:
+                        type: array
+                        items:
+                          type: object
+        "404":
+          description: Polling station not found
+
+  /api/polling-booths:
+    get:
+      tags:
+        - Polling
+      summary: List Polling Booths
+      description: |
+        Get all polling booths with voter counts, sentiment breakdown, and turnout stats.
+        Optionally filter by station or ward.
+      parameters:
+        - name: list_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Voter list ID
+        - name: station_id
+          in: query
+          schema:
+            type: integer
+          description: Filter by polling station ID
+        - name: ward_no
+          in: query
+          schema:
+            type: string
+          description: Filter by ward number
+        - name: include_stats
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include sentiment and turnout statistics
+      responses:
+        "200":
+          description: List of polling booths
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      list_id:
+                        type: integer
+                      polling_booths:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            polling_booth_id:
+                              type: integer
+                            code:
+                              type: string
+                            name:
+                              type: string
+                            polling_station_id:
+                              type: integer
+                            station_name:
+                              type: string
+                            ward_no:
+                              type: string
+                            voter_count:
+                              type: integer
+                            male_count:
+                              type: integer
+                              description: Only included when include_stats=true
+                            female_count:
+                              type: integer
+                              description: Only included when include_stats=true
+                            sentiment_counts:
+                              type: object
+                              description: Only included when include_stats=true
+                              properties:
+                                support:
+                                  type: integer
+                                oppose:
+                                  type: integer
+                                swing:
+                                  type: integer
+                                neutral:
+                                  type: integer
+                                unknown:
+                                  type: integer
+                            turnout_counts:
+                              type: object
+                              description: Only included when include_stats=true
+                              properties:
+                                marked:
+                                  type: integer
+                                unmarked:
+                                  type: integer
+                                will_vote:
+                                  type: integer
+                      total:
+                        type: integer
+
+  /api/polling-booths/{id}:
+    get:
+      tags:
+        - Polling
+      summary: Get Polling Booth Details
+      description: |
+        Get detailed information about a specific polling booth including
+        sentiment breakdown, turnout counts, and optionally paginated voters.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Polling booth ID
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+          description: Voter list ID (uses default if not provided)
+        - name: include_voters
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include voter list (default false)
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number for voters
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 50
+          description: Voters per page (max 500)
+      responses:
+        "200":
+          description: Polling booth details with sentiment and turnout stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      polling_booth_id:
+                        type: integer
+                      code:
+                        type: string
+                      name:
+                        type: string
+                      polling_station_id:
+                        type: integer
+                      station_code:
+                        type: string
+                      station_name:
+                        type: string
+                      ward_id:
+                        type: integer
+                      ward_no:
+                        type: string
+                      voter_count:
+                        type: integer
+                      male_count:
+                        type: integer
+                      female_count:
+                        type: integer
+                      sentiment_counts:
+                        type: object
+                        properties:
+                          support:
+                            type: integer
+                          oppose:
+                            type: integer
+                          swing:
+                            type: integer
+                          neutral:
+                            type: integer
+                          unknown:
+                            type: integer
+                      turnout_counts:
+                        type: object
+                        properties:
+                          will_vote:
+                            type: integer
+                          wont_vote:
+                            type: integer
+                          unsure:
+                            type: integer
+                          not_home:
+                            type: integer
+                          already_voted:
+                            type: integer
+                          needs_transport:
+                            type: integer
+                          migrated:
+                            type: integer
+                          deceased:
+                            type: integer
+                          invalid:
+                            type: integer
+                          unmarked:
+                            type: integer
+                      voters:
+                        type: array
+                        description: Only included when include_voters=true
+                        items:
+                          type: object
+                          properties:
+                            voter_id:
+                              type: integer
+                            serial_no:
+                              type: string
+                            name:
+                              type: string
+                            relative_name:
+                              type: string
+                            house_no:
+                              type: string
+                            age:
+                              type: integer
+                            gender:
+                              type: string
+                            sentiment:
+                              type: string
+                              enum: [support, oppose, swing, neutral, unknown]
+                            sentiment_source:
+                              type: string
+                            confidence:
+                              type: number
+                            turnout_status:
+                              type: string
+                              enum:
+                                [
+                                  will_vote,
+                                  wont_vote,
+                                  unsure,
+                                  not_home,
+                                  already_voted,
+                                  needs_transport,
+                                  migrated,
+                                  deceased,
+                                  invalid,
+                                ]
+                              nullable: true
+                            turnout_note:
+                              type: string
+                              nullable: true
+                            turnout_marked_at:
+                              type: string
+                              format: date-time
+                              nullable: true
+                            turnout_marked_by:
+                              type: integer
+                              nullable: true
+                      pagination:
+                        type: object
+                        description: Only included when include_voters=true
+                        properties:
+                          page:
+                            type: integer
+                          per_page:
+                            type: integer
+                          total:
+                            type: integer
+                          total_pages:
+                            type: integer
+                          has_next:
+                            type: boolean
+                          has_prev:
+                            type: boolean
+        "404":
+          description: Polling booth not found
+
+  /api/polling-booths/stats:
+    get:
+      tags:
+        - Polling
+      summary: Get Booth Statistics Summary
+      description: |
+        Get aggregated statistics for all polling booths including voter counts,
+        sentiment breakdown, and turnout survey results.
+        Useful for dashboard overview of booth-level campaign status.
+      parameters:
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+          description: Voter list ID (uses default if not provided)
+        - name: ward_no
+          in: query
+          schema:
+            type: string
+          description: Filter by specific ward number
+      responses:
+        "200":
+          description: Booth statistics summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      list_id:
+                        type: integer
+                      ward_no:
+                        type: string
+                        nullable: true
+                      summary:
+                        type: object
+                        properties:
+                          total_booths:
+                            type: integer
+                          total_voters:
+                            type: integer
+                          sentiment:
+                            type: object
+                            properties:
+                              support:
+                                type: integer
+                              oppose:
+                                type: integer
+                              swing:
+                                type: integer
+                              support_percent:
+                                type: number
+                              net_margin:
+                                type: integer
+                              net_margin_percent:
+                                type: number
+                          turnout:
+                            type: object
+                            properties:
+                              marked:
+                                type: integer
+                              unmarked:
+                                type: integer
+                              coverage_percent:
+                                type: number
+                              will_vote:
+                                type: integer
+                              projected_turnout_percent:
+                                type: number
+                      booths:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            polling_booth_id:
+                              type: integer
+                            booth_code:
+                              type: string
+                            booth_name:
+                              type: string
+                            station_code:
+                              type: string
+                            ward_no:
+                              type: string
+                            total_voters:
+                              type: integer
+                            male_count:
+                              type: integer
+                            female_count:
+                              type: integer
+                            support_count:
+                              type: integer
+                            oppose_count:
+                              type: integer
+                            swing_count:
+                              type: integer
+                            turnout_marked:
+                              type: integer
+                            will_vote_count:
+                              type: integer
+                            support_percent:
+                              type: number
+                            turnout_coverage_percent:
+                              type: number
+                            projected_turnout_percent:
+                              type: number
+        "404":
+          description: No voter list available
+
+  # ==================== TURNOUT MARKING ENDPOINTS ====================
+  /api/turnout/mark:
+    post:
+      tags:
+        - Turnout
+      summary: Mark Voter Turnout
+      description: |
+        Mark or update the turnout status for a single voter based on field survey.
+        This is an append-only operation - each mark is recorded as a new entry,
+        and the latest entry is used as the current status.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - voter_id
+                - status
+              properties:
+                voter_id:
+                  type: integer
+                  description: Voter ID to mark
+                  example: 123
+                status:
+                  type: string
+                  enum:
+                    [
+                      will_vote,
+                      wont_vote,
+                      unsure,
+                      not_home,
+                      already_voted,
+                      needs_transport,
+                      migrated,
+                      deceased,
+                      invalid,
+                    ]
+                  description: Turnout status from field survey
+                list_id:
+                  type: integer
+                  description: Voter list ID (uses default if not provided)
+                note:
+                  type: string
+                  description: Optional note about the voter's situation
+                  example: "Out of town, will return on election day"
+                source:
+                  type: string
+                  default: field_visit
+                  description: Source of the turnout information
+                  example: "door_to_door"
+                user_id:
+                  type: integer
+                  description: ID of the user marking the turnout
+                marked_at:
+                  type: string
+                  format: date-time
+                  description: Custom timestamp (defaults to now if not provided)
+      responses:
+        "200":
+          description: Turnout marked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      turnout_id:
+                        type: integer
+                      list_id:
+                        type: integer
+                      voter_id:
+                        type: integer
+                      status:
+                        type: string
+                      note:
+                        type: string
+                      source:
+                        type: string
+                      marked_by:
+                        type: integer
+                      marked_at:
+                        type: string
+                        format: date-time
+        "400":
+          description: Invalid status or missing required fields
+        "404":
+          description: No voter list available
+
+  /api/turnout/bulk-mark:
+    post:
+      tags:
+        - Turnout
+      summary: Bulk Mark Voter Turnout
+      description: |
+        Mark turnout status for multiple voters in a single request.
+        Supports two modes:
+        1. **Shared status**: Provide `voter_ids` array and single `status` to apply to all
+        2. **Individual marks**: Provide `marks` array with per-voter status
+
+        Maximum 1000 voters per request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                list_id:
+                  type: integer
+                  description: Voter list ID (uses default if not provided)
+                voter_ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: Array of voter IDs (use with shared status mode)
+                  example: [123, 456, 789]
+                status:
+                  type: string
+                  enum:
+                    [
+                      will_vote,
+                      wont_vote,
+                      unsure,
+                      not_home,
+                      already_voted,
+                      needs_transport,
+                      migrated,
+                      deceased,
+                      invalid,
+                    ]
+                  description: Status to apply to all voter_ids (shared status mode)
+                note:
+                  type: string
+                  description: Note to apply to all (shared status mode)
+                marks:
+                  type: array
+                  description: Array of individual turnout marks (individual marks mode)
+                  items:
+                    type: object
+                    required:
+                      - voter_id
+                      - status
+                    properties:
+                      voter_id:
+                        type: integer
+                      status:
+                        type: string
+                        enum:
+                          [
+                            will_vote,
+                            wont_vote,
+                            unsure,
+                            not_home,
+                            already_voted,
+                            needs_transport,
+                            migrated,
+                            deceased,
+                            invalid,
+                          ]
+                      note:
+                        type: string
+                source:
+                  type: string
+                  default: bulk_turnout
+                  description: Source identifier for this batch
+                user_id:
+                  type: integer
+                  description: User ID making the bulk update
+                marked_at:
+                  type: string
+                  format: date-time
+                  description: Custom timestamp for all marks
+      responses:
+        "200":
+          description: Bulk turnout marking completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      marked_count:
+                        type: integer
+                        description: Number of voters successfully marked
+                      marks:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            voter_id:
+                              type: integer
+                            status:
+                              type: string
+                            note:
+                              type: string
+        "400":
+          description: Invalid marks data, validation errors, or too many marks
+        "404":
+          description: No voter list available
+
+  # ==================== CASTE DETECTION ENDPOINTS ====================
+  /api/caste/detect:
+    post:
+      tags:
+        - Caste
+      summary: Run Caste Detection
+      description: |
+        Runs the full 3-level caste detection pipeline:
+        - Level 1: Direct surname matching from dictionary
+        - Level 2: Household propagation (family inheritance)
+        - Level 3: Spatial/Mohalla interpolation (neighbor analysis)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - list_id
+              properties:
+                list_id:
+                  type: integer
+                  description: Voter list to process
+      responses:
+        "200":
+          description: Detection completed with statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      list_id:
+                        type: integer
+                      total_voters:
+                        type: integer
+                      total_households:
+                        type: integer
+                      coverage_pct:
+                        type: number
+                      by_status:
+                        type: object
+                      by_method:
+                        type: object
+                      by_caste:
+                        type: object
+                      by_category:
+                        type: object
+
+  /api/caste/reload-config:
+    post:
+      tags:
+        - Caste
+      summary: Reload Caste Dictionary
+      description: Reload the caste surname dictionary without restarting server
+      responses:
+        "200":
+          description: Configuration reloaded
+
+  /api/voters/{voter_id}/caste:
+    get:
+      tags:
+        - Caste
+      summary: Get Voter Caste
+      description: Get detected caste for a specific voter
+      parameters:
+        - name: voter_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: Voter caste details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  voter_id:
+                    type: integer
+                  name:
+                    type: string
+                  caste:
+                    type: string
+                  category:
+                    type: string
+                    enum: [General, OBC, SC, ST, Minority]
+                  status:
+                    type: string
+                    enum: [identified, ambiguous, unidentified, mixed_household]
+                  detection_method:
+                    type: string
+                    enum:
+                      [
+                        direct_surname,
+                        household_inference,
+                        spatial_interpolation,
+                        manual_override,
+                      ]
+                  confidence:
+                    type: number
+    put:
+      tags:
+        - Caste
+      summary: Manual Caste Override
+      description: Manually set or override caste for a voter
+      parameters:
+        - name: voter_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - caste
+              properties:
+                caste:
+                  type: string
+                  description: Caste name (e.g., Yadav_OBC, Brahmin)
+                category:
+                  type: string
+                  enum: [General, OBC, SC, ST, Minority]
+                list_id:
+                  type: integer
+                  default: 1
+                user_id:
+                  type: integer
+                  default: 1
+      responses:
+        "200":
+          description: Override applied
+
+  /api/families/{ward_no}/{house_no}/caste:
+    get:
+      tags:
+        - Caste
+      summary: Get Household Caste
+      description: Get caste breakdown for all members in a household
+      parameters:
+        - name: ward_no
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: house_no
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: Household caste breakdown
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ward_no:
+                    type: string
+                  house_no:
+                    type: string
+                  member_count:
+                    type: integer
+                  dominant_caste:
+                    type: string
+                  is_mixed:
+                    type: boolean
+                  castes_found:
+                    type: array
+                    items:
+                      type: string
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        voter_id:
+                          type: integer
+                        name:
+                          type: string
+                        caste:
+                          type: string
+                        category:
+                          type: string
+                        confidence:
+                          type: number
+
+  /api/caste/ward/{ward_no}:
+    get:
+      tags:
+        - Caste
+      summary: Get Ward Caste Distribution
+      description: Get caste breakdown for a specific ward
+      parameters:
+        - name: ward_no
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: Ward caste distribution
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ward_no:
+                    type: string
+                  total_voters:
+                    type: integer
+                  distribution:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        caste:
+                          type: string
+                        category:
+                          type: string
+                        count:
+                          type: integer
+                        percentage:
+                          type: number
+
+  /api/caste/summary:
+    get:
+      tags:
+        - Caste
+      summary: Get Caste Detection Summary
+      description: Get overall caste detection statistics
+      parameters:
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: Detection summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list_id:
+                    type: integer
+                  total_voters:
+                    type: integer
+                  identified:
+                    type: integer
+                  ambiguous:
+                    type: integer
+                  unidentified:
+                    type: integer
+                  coverage_pct:
+                    type: number
+                  by_caste:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        caste:
+                          type: string
+                        category:
+                          type: string
+                        count:
+                          type: integer
+                  by_category:
+                    type: object
+                  by_method:
+                    type: object
+
+  /api/caste/voters:
+    get:
+      tags:
+        - Caste
+      summary: Get Voters by Caste
+      description: Get all voters of a specific caste or category
+      parameters:
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: caste
+          in: query
+          schema:
+            type: string
+          description: Filter by caste name (e.g., Yadav_OBC)
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [General, OBC, SC, ST, Minority]
+          description: Filter by category
+        - name: ward_no
+          in: query
+          schema:
+            type: string
+          description: Filter by ward
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Filtered voters list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  voters:
+                    type: array
+                    items:
+                      type: object
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  pages:
+                    type: integer
+
+  /api/caste/resolve-ambiguous:
+    post:
+      tags:
+        - Caste
+      summary: Resolve Ambiguous Castes via AI
+      description: |
+        Use Gemini 1.5 Pro AI to resolve ambiguous caste cases.
+        This is the "Smart Path" for cases like:
+        - Names with only "Singh", "Kumar", "Devi"
+        - Conflicting household/spatial signals
+        - No dictionary matches
+
+        **Rate Limited**: Max 50 voters per batch to manage API costs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - list_id
+              properties:
+                list_id:
+                  type: integer
+                  description: Voter list to process
+                batch_size:
+                  type: integer
+                  default: 50
+                  description: How many ambiguous voters to process
+                dry_run:
+                  type: boolean
+                  default: false
+                  description: If true, don't save results to database
+      responses:
+        "200":
+          description: AI resolution results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      list_id:
+                        type: integer
+                      total_processed:
+                        type: integer
+                      resolved_count:
+                        type: integer
+                      skipped_count:
+                        type: integer
+                      dry_run:
+                        type: boolean
+                      tokens_used:
+                        type: integer
+                      resolutions:
+                        type: array
+                        description: Only returned if dry_run=true
+                        items:
+                          type: object
+                          properties:
+                            voter_id:
+                              type: integer
+                            voter_name:
+                              type: string
+                            resolved_caste:
+                              type: string
+                            category:
+                              type: string
+                            confidence:
+                              type: number
+                            reasoning:
+                              type: string
+        "400":
+          description: Missing list_id or GEMINI_API_KEY not configured
+
+  /api/caste/ambiguous:
+    get:
+      tags:
+        - Caste
+      summary: Get Ambiguous Voters
+      description: List voters that need AI resolution
+      parameters:
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: reason
+          in: query
+          schema:
+            type: string
+            enum:
+              [
+                name_only_singh,
+                name_only_kumar,
+                name_only_devi,
+                conflicting_signals,
+                no_surname_match,
+                low_spatial_consensus,
+                multi_caste_household,
+              ]
+          description: Filter by ambiguity reason
+      responses:
+        "200":
+          description: Ambiguous voters list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  voters:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        voter_id:
+                          type: integer
+                        voter_name:
+                          type: string
+                        father_name:
+                          type: string
+                        house_number:
+                          type: string
+                        ambiguity_reason:
+                          type: string
+                        household_castes:
+                          type: object
+                        neighbor_castes:
+                          type: object
+                  total:
+                    type: integer
+                  list_id:
+                    type: integer
+
+  /api/caste/house/{house_no}:
+    get:
+      tags:
+        - Caste
+      summary: Get House Caste Details
+      description: Get detailed caste information for a specific house number
+      parameters:
+        - name: house_no
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: list_id
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: House caste details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  house_no:
+                    type: string
+                  total_voters:
+                    type: integer
+                  dominant_caste:
+                    type: string
+                  detection_sources:
+                    type: object
+                  voters:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        voter_id:
+                          type: integer
+                        name:
+                          type: string
+                        father_name:
+                          type: string
+                        age:
+                          type: integer
+                        gender:
+                          type: string
+                        detected_caste:
+                          type: string
+                        category:
+                          type: string
+                        detection_method:
+                          type: string
+                        confidence:
+                          type: number
+                        matched_surname:
+                          type: string
+
+  # ==================== USER ENDPOINTS ====================
+  /api/users:
+    get:
+      tags:
+        - System
+      summary: List Campaign Users
+      description: Get all campaign team users
+      responses:
+        "200":
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user_id:
+                          type: integer
+                        username:
+                          type: string
+                        role:
+                          type: string
+                        is_active:
+                          type: boolean
+    post:
+      tags:
+        - System
+      summary: Create Campaign User
+      description: Add a new campaign team user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+              properties:
+                username:
+                  type: string
+                role:
+                  type: string
+                  enum: [admin, coordinator, volunteer]
+                  default: volunteer
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  user_id:
+                    type: integer
+                  username:
+                    type: string
+
+components:
+  schemas:
+    Voter:
+      type: object
+      properties:
+        voter_id:
+          type: integer
+          description: Unique voter ID
+        serial_no:
+          type: string
+        house_no:
+          type: string
+        name:
+          type: string
+        relative_name:
+          type: string
+        gender:
+          type: string
+          enum: [Male, Female, पु, म]
+        age:
+          type: integer
+        ward_no:
+          type: string
+        ps_code:
+          type: string
+        ps_name:
+          type: string
+        pb_code:
+          type: string
+        pb_name:
+          type: string
+        sentiment:
+          type: string
+          enum: [support, oppose, swing, neutral, unknown]
+          description: Voter's sentiment (included in all voter responses)
+        sentiment_source:
+          type: string
+          enum:
+            [
+              manual,
+              inherited_spouse,
+              inherited_parent,
+              inherited_sibling,
+              youth_rule,
+              none,
+            ]
+          description: How the sentiment was determined
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Confidence score for the sentiment (0.0 - 1.0)
+        turnout_status:
+          type: string
+          enum:
+            [
+              will_vote,
+              wont_vote,
+              unsure,
+              not_home,
+              already_voted,
+              needs_transport,
+              migrated,
+              deceased,
+              invalid,
+            ]
+          nullable: true
+          description: Turnout status from field survey
+        turnout_note:
+          type: string
+          nullable: true
+          description: Note associated with turnout marking
+        turnout_marked_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the turnout was marked
+        turnout_marked_by:
+          type: integer
+          nullable: true
+          description: User ID who marked the turnout
+
+    VoterList:
+      type: object
+      properties:
+        list_id:
+          type: integer
+        filename:
+          type: string
+        year:
+          type: integer
+        upload_date:
+          type: string
+          format: date-time
+        total_voters:
+          type: integer
+        status:
+          type: string
+        source_type:
+          type: string
+
+    Family:
+      type: object
+      properties:
+        ward_id:
+          type: integer
+        ward_no:
+          type: string
+        house_no:
+          type: string
+        member_count:
+          type: integer
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/Voter"
+
+    Election:
+      type: object
+      properties:
+        election_id:
+          type: integer
+          description: Unique election ID
+        list_id:
+          type: integer
+          description: Associated voter list ID
+        election_name:
+          type: string
+          description: Name of the election
+          example: "Panchayat Election 2024"
+        election_date:
+          type: string
+          format: date
+          example: "2024-05-15"
+        election_type:
+          type: string
+          enum: [panchayat, municipal, state, lok_sabha]
+        description:
+          type: string
+        status:
+          type: string
+          enum: [active, completed, archived]
+        total_candidates:
+          type: integer
+          description: Number of candidates
+        filename:
+          type: string
+          description: Associated voter list filename
+        total_voters:
+          type: integer
+          description: Total voters in associated list
+        list_year:
+          type: integer
+          description: Year of voter list
+        candidate_count:
+          type: integer
+          description: Current candidate count
+        ward_count:
+          type: integer
+          description: Number of wards
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Candidate:
+      type: object
+      properties:
+        candidate_id:
+          type: integer
+          description: Unique candidate ID
+        list_id:
+          type: integer
+          description: Associated voter list ID
+        voter_id:
+          type: integer
+          nullable: true
+          description: Voter ID if selected from voter list
+        voter_serial_no:
+          type: integer
+          nullable: true
+          description: Voter serial number (from voters table)
+        name:
+          type: string
+          description: Candidate name
+        relative_name:
+          type: string
+          description: Father/Husband name
+        age:
+          type: integer
+        gender:
+          type: string
+          enum: [Male, Female]
+        house_no:
+          type: string
+        ward_no:
+          type: string
+        party_name:
+          type: string
+          description: Political party
+          example: "Independent"
+        party_symbol:
+          type: string
+          description: Party symbol
+          example: "Bicycle"
+        contact_number:
+          type: string
+        education:
+          type: string
+        is_from_voter_list:
+          type: boolean
+          description: True if selected from voter list, false if manually entered
+        status:
+          type: string
+          enum: [active, withdrawn, disqualified]
+          default: active
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
