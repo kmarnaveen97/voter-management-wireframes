@@ -23,6 +23,7 @@ import {
   Settings,
   Layers,
   Lock,
+  Clock,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,14 @@ export const moduleNavItems: Record<string, NavItem[]> = {
       href: "/voters-management/voter-turnout",
       icon: Vote,
       description: "Track voter turnout",
+      requiresCandidate: true,
+    },
+    {
+      title: "D-Day Dashboard",
+      href: "/voters-management/dday",
+      icon: Clock,
+      description: "Election day management",
+      badge: "Live",
       requiresCandidate: true,
     },
     {

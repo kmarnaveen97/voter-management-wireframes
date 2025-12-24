@@ -8,6 +8,7 @@ import { api, type Voter, type TurnoutStatus } from "@/lib/api";
 import { queryKeys } from "@/lib/query-client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Select,
@@ -60,6 +61,8 @@ import {
   HelpCircle,
   Home as HomeIcon,
   Check,
+  WifiOff,
+  Wifi,
 } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useListContext } from "@/contexts/list-context";
@@ -230,6 +233,8 @@ export default function VoterTurnoutPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState<VoterFiltersState>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isOnline, setIsOnline] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [bulkNoteDialogOpen, setBulkNoteDialogOpen] = useState(false);
   const [bulkNoteStatus, setBulkNoteStatus] = useState<TurnoutStatus | null>(
     null
@@ -273,6 +278,11 @@ export default function VoterTurnoutPage() {
     },
     enabled: !!selectedListId && !listLoading,
     staleTime: 30 * 1000,
+    gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     placeholderData: (previousData) => previousData,
   });
 
@@ -514,6 +524,26 @@ export default function VoterTurnoutPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedIds, openBulkNoteDialog]);
 
+  // Monitor network status
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    setIsOnline(navigator.onLine);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // Track data freshness
+  useEffect(() => {
+    if (votersData) {
+      setLastUpdated(new Date());
+    }
+  }, [votersData]);
+
   // ==========================================================================
   // Derived State
   // ==========================================================================
@@ -549,16 +579,38 @@ export default function VoterTurnoutPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
-            <Vote className="h-5 w-5 text-muted-foreground" />
-            Voter Turnout
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+              <Vote className="h-5 w-5 text-muted-foreground" />
+              Voter Turnout
+            </h1>
+            {!isOnline && (
+              <Badge variant="destructive" className="gap-1">
+                <WifiOff className="h-3 w-3" />
+                Offline
+              </Badge>
+            )}
+            {isOnline && isError && (
+              <Badge
+                variant="outline"
+                className="gap-1 text-yellow-600 border-yellow-600"
+              >
+                <AlertCircle className="h-3 w-3" />
+                Connection Issues
+              </Badge>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">
             {totalVoters.toLocaleString()} total voters
             {voters.length !== totalVoters && voters.length > 0 && (
               <span className="text-primary">
                 {" "}
                 • Showing {voters.length.toLocaleString()}
+              </span>
+            )}
+            {lastUpdated && (
+              <span className="text-xs ml-2">
+                • Updated: {lastUpdated.toLocaleTimeString()}
               </span>
             )}
           </p>
@@ -584,7 +636,9 @@ export default function VoterTurnoutPage() {
               <DropdownMenuItem
                 onClick={() => computeSentimentsMutation.mutate()}
                 disabled={
-                  computeSentimentsMutation.isPending || !selectedListId
+                  computeSentimentsMutation.isPending ||
+                  !selectedListId ||
+                  !isOnline
                 }
               >
                 <Calculator className="h-4 w-4 mr-2" />
@@ -592,7 +646,7 @@ export default function VoterTurnoutPage() {
                   ? "Computing..."
                   : "Compute Sentiments"}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => refetch()}>
+              <DropdownMenuItem onClick={() => refetch()} disabled={!isOnline}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh Data
               </DropdownMenuItem>

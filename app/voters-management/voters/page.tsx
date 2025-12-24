@@ -52,6 +52,8 @@ import {
   TrendingUp,
   ToggleLeft,
   ToggleRight,
+  WifiOff,
+  Wifi,
 } from "lucide-react";
 import { Toggle } from "@/components/ui/toggle";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -135,6 +137,11 @@ function useVotersQuery(
     enabled: !!listId,
     placeholderData: (prev) => prev, // Keep showing previous data while fetching
     staleTime: 30 * 1000, // Consider data fresh for 30 seconds
+    gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }
 
@@ -147,6 +154,11 @@ function useSentimentOverview(listId: number | undefined) {
     queryFn: () => api.getSentimentOverview(listId!),
     enabled: !!listId,
     staleTime: 30 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }
 
@@ -308,6 +320,8 @@ export default function VotersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState<VoterFiltersState>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isOnline, setIsOnline] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [paginationEnabled, setPaginationEnabled] = useState(() => {
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem("votersPagePaginationEnabled");
@@ -352,11 +366,34 @@ export default function VotersPage() {
     queryFn: () => api.getCandidates({ list_id: selectedListId! }),
     enabled: !!selectedListId,
     staleTime: 60 * 1000, // 1 minute
+    gcTime: 30 * 60 * 1000,
+    retry: 2,
+    retryDelay: 1000,
   });
 
   // Fetch sentiment overview (total stats across all voters)
   const { data: sentimentOverview, isLoading: overviewLoading } =
     useSentimentOverview(selectedListId);
+
+  // Monitor network status
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    setIsOnline(navigator.onLine);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // Track data freshness
+  useEffect(() => {
+    if (votersData) {
+      setLastUpdated(new Date());
+    }
+  }, [votersData]);
 
   // Toggle between page stats and total stats
   const [showTotalStats, setShowTotalStats] = useState(true);
@@ -621,19 +658,41 @@ export default function VotersPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
-            <Users className="h-5 w-5 text-muted-foreground" />
-            Voters
-            {isFetching && !isLoading && (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+              <Users className="h-5 w-5 text-muted-foreground" />
+              Voters
+              {isFetching && !isLoading && (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              )}
+            </h1>
+            {!isOnline && (
+              <Badge variant="destructive" className="gap-1">
+                <WifiOff className="h-3 w-3" />
+                Offline
+              </Badge>
             )}
-          </h1>
+            {isOnline && error && (
+              <Badge
+                variant="outline"
+                className="gap-1 text-yellow-600 border-yellow-600"
+              >
+                <AlertCircle className="h-3 w-3" />
+                Connection Issues
+              </Badge>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">
             {totalVoters.toLocaleString()} total
             {voters.length !== totalVoters && voters.length > 0 && (
               <span className="text-primary">
                 {" "}
                 • Showing {voters.length.toLocaleString()}
+              </span>
+            )}
+            {lastUpdated && (
+              <span className="text-xs ml-2">
+                • Updated: {lastUpdated.toLocaleTimeString()}
               </span>
             )}
           </p>
@@ -663,7 +722,9 @@ export default function VotersPage() {
               <DropdownMenuItem
                 onClick={() => computeSentimentsMutation.mutate()}
                 disabled={
-                  computeSentimentsMutation.isPending || !selectedListId
+                  computeSentimentsMutation.isPending ||
+                  !selectedListId ||
+                  !isOnline
                 }
               >
                 <Calculator className="h-4 w-4 mr-2" />
@@ -671,7 +732,7 @@ export default function VotersPage() {
                   ? "Computing..."
                   : "Compute Sentiments"}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => refetch()}>
+              <DropdownMenuItem onClick={() => refetch()} disabled={!isOnline}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh Data
               </DropdownMenuItem>

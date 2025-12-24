@@ -507,6 +507,7 @@ export interface TurnoutMarkRequest {
   list_id: number;
   voter_id: number;
   status: TurnoutStatus;
+  voted_for_candidate_id?: number;
   note?: string;
   user_id?: number;
   source?: string;
@@ -762,6 +763,110 @@ export interface ProfileSearchFilters {
   party_affiliation?: string;
   limit?: number;
   offset?: number;
+}
+
+export interface SentimentTurnoutMatrix {
+  matrix: {
+    support_unmarked: number;
+    support_will_vote: number;
+    support_needs_transport: number;
+    oppose_unmarked: number;
+    swing_unmarked: number;
+  };
+  projection: {
+    total_active: number;
+    already_voted: number;
+    expected_for_us: number;
+    expected_against_us: number;
+    margin: number;
+    swing_likely_voting: number;
+  };
+  action_needed: {
+    supporters_need_transport: number;
+    supporters_not_contacted: number;
+    confirmed_not_voting: number;
+  };
+}
+
+export interface DDayPriorityVoter {
+  voter_id: number;
+  name: string;
+  relative_name: string;
+  house_no: string;
+  ward_no: number | string;
+  booth_no: number;
+  age: number;
+  gender: string;
+  mobile: string | null;
+  sentiment: SentimentType;
+  turnout_status: TurnoutStatus | "unmarked";
+  needs_transport: boolean;
+  priority: number;
+  action: string;
+}
+
+export interface DDayPriorityResponse {
+  total_results: number;
+  priority_summary: Record<string, number>;
+  voters: DDayPriorityVoter[];
+}
+
+export interface DDaySummary {
+  overview: {
+    total_active_voters: number;
+    already_voted: number;
+    voting_progress_percent: number;
+    expected_for_us: number;
+    expected_against_us: number;
+    current_margin: number;
+  };
+  urgent_actions: {
+    supporters_need_transport: number;
+    supporters_not_contacted: number;
+  };
+  priority_breakdown: Array<{
+    priority: number;
+    action: string;
+    count: number;
+  }>;
+  ward_breakdown: Array<{
+    ward_no: number | string;
+    supporters_pending: number;
+    need_transport: number;
+    already_voted: number;
+  }>;
+  booth_breakdown: Array<{
+    booth_no: number;
+    ward_no: number | string;
+    total: number;
+    supporters_pending: number;
+    need_transport: number;
+    already_voted: number;
+  }>;
+}
+
+export interface CandidateVoteBreakdown {
+  from_supporters: number;
+  from_opponents: number;
+  from_swing: number;
+  from_unknown: number;
+}
+
+export interface CandidateVoteCount {
+  candidate_id: number;
+  candidate_name: string;
+  party_name: string | null;
+  is_our_candidate: boolean;
+  vote_count: number;
+  vote_share_percent: number;
+  breakdown: CandidateVoteBreakdown;
+}
+
+export interface DDayCandidateVotes {
+  list_id: number;
+  total_voted: number;
+  unknown_votes: number;
+  candidates: CandidateVoteCount[];
 }
 
 export interface ApiResponse<T> {
@@ -1133,6 +1238,77 @@ export const api = {
     if (!res.ok) throw new Error("Failed to search voter profiles");
     const json = await res.json();
     return json.data;
+  },
+
+  /** Get sentiment-turnout matrix stats - GET /api/stats/sentiment-turnout */
+  getSentimentTurnoutMatrix: async (
+    listId: number
+  ): Promise<SentimentTurnoutMatrix> => {
+    const res = await fetch(
+      `${API_BASE_URL}/api/stats/sentiment-turnout?list_id=${listId}`
+    );
+    if (!res.ok) throw new Error("Failed to fetch sentiment-turnout matrix");
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /** Get D-Day priority list - GET /api/dday/priorities */
+  getDDayPriorities: async (params: {
+    list_id: number;
+    limit?: number;
+    priority_max?: number;
+    ward_no?: string;
+    booth_no?: number;
+    sentiment?: "support" | "swing";
+  }): Promise<DDayPriorityResponse> => {
+    const queryParams = new URLSearchParams({
+      list_id: String(params.list_id),
+      limit: String(params.limit || 100),
+      priority_max: String(params.priority_max || 10),
+    });
+    if (params.ward_no) queryParams.append("ward_no", params.ward_no);
+    if (params.booth_no)
+      queryParams.append("booth_no", String(params.booth_no));
+    if (params.sentiment) queryParams.append("sentiment", params.sentiment);
+
+    const res = await fetch(
+      `${API_BASE_URL}/api/dday/priorities?${queryParams}`
+    );
+    if (!res.ok) throw new Error("Failed to fetch D-Day priorities");
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /** Get D-Day summary dashboard - GET /api/dday/summary */
+  getDDaySummary: async (
+    listId: number,
+    options?: { ward_no?: string; booth_no?: number }
+  ): Promise<DDaySummary> => {
+    const params = new URLSearchParams({ list_id: String(listId) });
+    if (options?.ward_no) params.append("ward_no", options.ward_no);
+    if (options?.booth_no) params.append("booth_no", String(options.booth_no));
+
+    const res = await fetch(`${API_BASE_URL}/api/dday/summary?${params}`);
+    if (!res.ok) throw new Error("Failed to fetch D-Day summary");
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /** Get D-Day candidate vote counts - GET /api/dday/candidate-votes */
+  getDDayCandidateVotes: async (
+    listId: number,
+    options?: { ward_no?: string; booth_no?: number }
+  ): Promise<DDayCandidateVotes> => {
+    const params = new URLSearchParams({ list_id: String(listId) });
+    if (options?.ward_no) params.append("ward_no", options.ward_no);
+    if (options?.booth_no) params.append("booth_no", String(options.booth_no));
+
+    const res = await fetch(
+      `${API_BASE_URL}/api/dday/candidate-votes?${params}`
+    );
+    if (!res.ok) throw new Error("Failed to fetch candidate votes");
+    const json = await res.json();
+    return json.data || json;
   },
 
   /** Filter voters - GET /api/voters/filter */
