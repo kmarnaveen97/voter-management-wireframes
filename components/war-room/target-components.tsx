@@ -35,27 +35,27 @@ export const FloatingPriorityTargets = memo(function FloatingPriorityTargets({
   return (
     <div
       className={cn(
-        "absolute top-4 right-4 z-30 transition-all duration-300 ease-in-out",
-        isMinimized ? "w-auto" : "w-80"
+        "absolute top-14 sm:top-4 right-2 sm:right-4 z-30 transition-all duration-300 ease-in-out",
+        isMinimized ? "w-auto" : "w-64 sm:w-80"
       )}
     >
-      <div className="bg-slate-900/95 backdrop-blur-sm rounded-xl border border-slate-700 shadow-2xl overflow-hidden">
+      <div className="bg-slate-900/95 backdrop-blur-sm rounded-lg sm:rounded-xl border border-slate-700 shadow-2xl overflow-hidden">
         {/* Header - Always visible */}
         <button
-          className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-800/50 transition-colors"
+          className="w-full px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between hover:bg-slate-800/50 transition-colors"
           onClick={() => setIsMinimized(!isMinimized)}
         >
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center">
-              <Target size={16} className="text-white" />
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center">
+              <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white" />
             </div>
             {!isMinimized && (
               <div className="text-left">
-                <h3 className="text-sm font-semibold text-white">
+                <h3 className="text-xs sm:text-sm font-semibold text-white">
                   Priority Targets
                 </h3>
-                <p className="text-xs text-slate-400">
-                  {targets.length} swing voters to convert
+                <p className="text-[10px] sm:text-xs text-slate-400">
+                  {targets.length} swing voters
                 </p>
               </div>
             )}
@@ -94,7 +94,7 @@ export const FloatingPriorityTargets = memo(function FloatingPriorityTargets({
 
             {/* Target List */}
             {isExpanded && (
-              <ScrollArea className="h-[350px]">
+              <ScrollArea className="h-[250px] sm:h-[350px]">
                 <div className="divide-y divide-slate-700/50">
                   {targets.map((target, idx) => (
                     <button

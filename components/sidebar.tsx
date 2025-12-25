@@ -81,6 +81,14 @@ export const moduleNavItems: Record<string, NavItem[]> = {
       requiresCandidate: true,
     },
     {
+      title: "Not Voted Yet",
+      href: "/voters-management/not-voted-yet",
+      icon: Vote,
+      description: "Pending voters list",
+      badge: "Urgent",
+      requiresCandidate: true,
+    },
+    {
       title: "War Room",
       href: "/voters-management/war-room",
       icon: MapIcon,

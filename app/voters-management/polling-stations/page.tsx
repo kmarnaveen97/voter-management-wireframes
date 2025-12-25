@@ -41,6 +41,8 @@ import {
   X,
   ChevronDown,
   Download,
+  WifiOff,
+  Phone,
 } from "lucide-react";
 import { useListContext } from "@/contexts/list-context";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -65,6 +67,7 @@ export default function PollingStationsPage() {
     data: stationsData,
     isLoading: stationsLoading,
     error: stationsErrorObj,
+    refetch: refetchStations,
   } = usePollingStations(selectedListId);
 
   const stations = stationsData?.stations || [];
@@ -75,6 +78,7 @@ export default function PollingStationsPage() {
     data: boothStatsData,
     isLoading: boothStatsLoading,
     error: boothStatsErrorObj,
+    refetch: refetchBoothStats,
   } = useBoothStatistics(selectedListId);
 
   const boothSummary = boothStatsData?.summary || null;
@@ -87,6 +91,30 @@ export default function PollingStationsPage() {
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [sortKey, setSortKey] = useState<SortKey>("code");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  // Network monitoring state
+  const [isOnline, setIsOnline] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // Network monitoring effect
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    setIsOnline(navigator.onLine);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // Update last updated when data changes
+  useEffect(() => {
+    if (stationsData || boothStatsData) {
+      setLastUpdated(new Date());
+    }
+  }, [stationsData, boothStatsData]);
 
   // Inline station detail + booth voters (single expanded station + booth)
   const [expandedStation, setExpandedStation] = useState<PollingStation | null>(
@@ -427,11 +455,28 @@ export default function PollingStationsPage() {
     <div className="p-4 md:p-6 space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-muted-foreground" />
-            Polling Stations
-          </h1>
+        <div className="flex-1" suppressHydrationWarning>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-muted-foreground" />
+              Polling Stations
+            </h1>
+            {!isOnline && (
+              <Badge variant="destructive" className="text-[10px]">
+                <WifiOff className="w-3 h-3 mr-1" />
+                Offline
+              </Badge>
+            )}
+            {isOnline && (stationsErrorObj || boothStatsErrorObj) && (
+              <Badge
+                variant="outline"
+                className="text-[10px] text-orange-600 border-orange-600"
+              >
+                <AlertCircle className="w-3 h-3 mr-1" />
+                Connection Issues
+              </Badge>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">
             {stations.length} station{stations.length !== 1 ? "s" : ""} found
           </p>
@@ -440,8 +485,8 @@ export default function PollingStationsPage() {
           variant="outline"
           size="sm"
           onClick={() => {
-            fetchStations();
-            fetchBoothStats();
+            refetchStations();
+            refetchBoothStats();
           }}
         >
           <RefreshCw className="h-4 w-4 mr-1" />
@@ -522,7 +567,7 @@ export default function PollingStationsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={fetchBoothStats}
+                  onClick={() => refetchBoothStats()}
                   disabled={boothStatsLoading}
                 >
                   <RefreshCw className="h-4 w-4 mr-1" />
@@ -669,7 +714,11 @@ export default function PollingStationsPage() {
               <AlertCircle className="h-4 w-4" />
               <AlertDescription className="flex items-center justify-between">
                 <span>{error}</span>
-                <Button variant="outline" size="sm" onClick={fetchStations}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchStations()}
+                >
                   <RefreshCw className="h-4 w-4 mr-1" />
                   Retry
                 </Button>
@@ -1236,12 +1285,29 @@ export default function PollingStationsPage() {
                                                         {voter.serial_no}
                                                       </TableCell>
                                                       <TableCell>
-                                                        <Link
-                                                          href={`/voters-management/voters/${voter.voter_id}`}
-                                                          className="hover:underline text-primary"
-                                                        >
-                                                          {voter.name}
-                                                        </Link>
+                                                        <div className="flex items-center gap-2">
+                                                          <Link
+                                                            href={`/voters-management/voters/${voter.voter_id}`}
+                                                            className="hover:underline text-primary flex-1 min-w-0 truncate"
+                                                          >
+                                                            {voter.name}
+                                                          </Link>
+                                                          {voter.mobile && (
+                                                            <button
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                window.open(
+                                                                  `tel:${voter.mobile}`,
+                                                                  "_self"
+                                                                );
+                                                              }}
+                                                              className="h-7 w-7 rounded flex items-center justify-center bg-green-600 hover:bg-green-700 text-white transition-colors shrink-0"
+                                                              title="Call voter"
+                                                            >
+                                                              <Phone className="h-4 w-4" />
+                                                            </button>
+                                                          )}
+                                                        </div>
                                                       </TableCell>
                                                       <TableCell>
                                                         {voter.age}

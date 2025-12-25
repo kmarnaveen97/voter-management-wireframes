@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { api, type Family } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Progress } from "@/components/ui/progress";
 import {
   Home,
   Users,
@@ -32,41 +33,147 @@ import {
   FileDown,
   TreeDeciduous,
   ChevronRight,
+  ChevronLeft,
   TrendingUp,
-  TrendingDown,
   BarChart3,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  WifiOff,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
-import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { useListContext } from "@/contexts/list-context";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
 
-const PAGE_SIZE = 50;
+const BATCH_SIZE = 500;
+const ITEMS_PER_PAGE = 50;
 
 export default function HouseholdsPage() {
   const { selectedListId, isLoading: listLoading } = useListContext();
 
-  const [families, setFamilies] = useState<Family[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
+  // All families data (fetched in batches)
+  const [allFamilies, setAllFamilies] = useState<Family[]>([]);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [totalToFetch, setTotalToFetch] = useState(0);
+  const [isFetchingAll, setIsFetchingAll] = useState(false);
+  const [fetchComplete, setFetchComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Frontend pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [totalFamilies, setTotalFamilies] = useState(0);
+
+  // Filter and sort state
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedWard, setSelectedWard] = useState<string>("all");
-  const [wards, setWards] = useState<string[]>([]);
   const [sortKey, setSortKey] = useState<
     "ward_no" | "house_no" | "mukhiya_name" | "member_count"
   >("ward_no");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
-  // Sorted families
+  // Network monitoring state
+  const [isOnline, setIsOnline] = useState(true);
+
+  // Network monitoring effect
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    setIsOnline(navigator.onLine);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // Fetch all families in batches
+  const fetchAllFamilies = async (listId: number) => {
+    setIsFetchingAll(true);
+    setFetchComplete(false);
+    setError(null);
+    setAllFamilies([]);
+    setLoadingProgress(0);
+
+    try {
+      // First fetch to get total count
+      const firstBatch = await api.getFamilies(1, BATCH_SIZE, listId);
+      const total = firstBatch.total || 0;
+      setTotalToFetch(total);
+
+      if (total === 0) {
+        setFetchComplete(true);
+        setIsFetchingAll(false);
+        return;
+      }
+
+      let allData: Family[] = [...(firstBatch.families || [])];
+      setAllFamilies(allData);
+      setLoadingProgress(Math.min(100, (allData.length / total) * 100));
+
+      // Calculate remaining pages
+      const totalPages = Math.ceil(total / BATCH_SIZE);
+
+      // Fetch remaining batches
+      for (let page = 2; page <= totalPages; page++) {
+        const batch = await api.getFamilies(page, BATCH_SIZE, listId);
+        const newFamilies = batch.families || [];
+
+        if (newFamilies.length === 0) break;
+
+        allData = [...allData, ...newFamilies];
+        setAllFamilies(allData);
+        setLoadingProgress(Math.min(100, (allData.length / total) * 100));
+      }
+
+      setFetchComplete(true);
+    } catch (err) {
+      console.error("Failed to fetch families:", err);
+      setError("Failed to load households. Please try again.");
+    } finally {
+      setIsFetchingAll(false);
+    }
+  };
+
+  // Auto-fetch when list changes
+  useEffect(() => {
+    if (selectedListId && !listLoading) {
+      fetchAllFamilies(selectedListId);
+    }
+  }, [selectedListId, listLoading]);
+
+  // Extract unique wards from data
+  const wards = useMemo(() => {
+    const wardSet = new Set(allFamilies.map((f) => f.ward_no));
+    return Array.from(wardSet).sort((a, b) => parseInt(a) - parseInt(b));
+  }, [allFamilies]);
+
+  // Filter families
+  const filteredFamilies = useMemo(() => {
+    let result = [...allFamilies];
+
+    // Filter by ward
+    if (selectedWard !== "all") {
+      result = result.filter((f) => f.ward_no === selectedWard);
+    }
+
+    // Filter by search
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (f) =>
+          f.house_no?.toLowerCase().includes(q) ||
+          f.mukhiya_name?.toLowerCase().includes(q) ||
+          f.ward_no?.toLowerCase().includes(q)
+      );
+    }
+
+    return result;
+  }, [allFamilies, selectedWard, searchQuery]);
+
+  // Sort families
   const sortedFamilies = useMemo(() => {
-    return [...families].sort((a, b) => {
+    return [...filteredFamilies].sort((a, b) => {
       let aVal: string | number;
       let bVal: string | number;
 
@@ -95,7 +202,19 @@ export default function HouseholdsPage() {
       if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
-  }, [families, sortKey, sortDir]);
+  }, [filteredFamilies, sortKey, sortDir]);
+
+  // Paginate
+  const totalPages = Math.ceil(sortedFamilies.length / ITEMS_PER_PAGE);
+  const paginatedFamilies = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return sortedFamilies.slice(start, start + ITEMS_PER_PAGE);
+  }, [sortedFamilies, currentPage]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedWard, sortKey, sortDir]);
 
   // Toggle sort
   const handleSort = (key: typeof sortKey) => {
@@ -119,125 +238,91 @@ export default function HouseholdsPage() {
     );
   };
 
-  // Stats
-  const totalMembers = families.reduce(
+  // Stats from filtered data
+  const totalMembers = filteredFamilies.reduce(
     (sum, f) => sum + (f.member_count || 0),
     0
   );
   const avgMembers =
-    families.length > 0 ? (totalMembers / families.length).toFixed(1) : "0";
+    filteredFamilies.length > 0
+      ? (totalMembers / filteredFamilies.length).toFixed(1)
+      : "0";
   const largestFamily =
-    families.length > 0
-      ? Math.max(...families.map((f) => f.member_count || 0))
+    filteredFamilies.length > 0
+      ? Math.max(...filteredFamilies.map((f) => f.member_count || 0))
       : 0;
 
-  const fetchWards = useCallback(async (listId?: number) => {
-    try {
-      const data = await api.getWardStats(listId);
-      const wardNumbers = data.wards?.map((w) => w.ward_no) || [];
-      setWards(wardNumbers);
-    } catch {
-      setWards([]);
+  // Pagination controls
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  };
+
+  const renderPaginationButtons = () => {
+    const buttons = [];
+    const maxButtons = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+    let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+
+    if (endPage - startPage + 1 < maxButtons) {
+      startPage = Math.max(1, endPage - maxButtons + 1);
     }
-  }, []);
 
-  const fetchFamilies = useCallback(
-    async (page: number, append: boolean = false, listId?: number) => {
-      try {
-        if (append) {
-          setLoadingMore(true);
-        } else {
-          setLoading(true);
-        }
-        setError(null);
-
-        const data = await api.getFamilies(page, PAGE_SIZE, listId);
-        let newFamilies = data.families || [];
-
-        // Filter by ward if selected
-        if (selectedWard !== "all") {
-          newFamilies = newFamilies.filter(
-            (f: Family) => f.ward_no === selectedWard
-          );
-        }
-
-        // Filter by search
-        if (searchQuery) {
-          const q = searchQuery.toLowerCase();
-          newFamilies = newFamilies.filter(
-            (f: Family) =>
-              f.house_no?.toLowerCase().includes(q) ||
-              f.mukhiya_name?.toLowerCase().includes(q)
-          );
-        }
-
-        if (append) {
-          setFamilies((prev) => [...prev, ...newFamilies]);
-        } else {
-          setFamilies(newFamilies);
-        }
-
-        setTotalFamilies(data.total || 0);
-        setHasMore((data.families?.length || 0) >= PAGE_SIZE);
-      } catch {
-        setError("Unable to fetch households.");
-        if (!append) {
-          setFamilies([]);
-          setTotalFamilies(0);
-        }
-        setHasMore(false);
-      } finally {
-        setLoading(false);
-        setLoadingMore(false);
-      }
-    },
-    [selectedWard, searchQuery]
-  );
-
-  useEffect(() => {
-    if (selectedListId && !listLoading) {
-      fetchWards(selectedListId);
+    for (let i = startPage; i <= endPage; i++) {
+      buttons.push(
+        <Button
+          key={i}
+          variant={i === currentPage ? "default" : "outline"}
+          size="sm"
+          className="h-8 w-8 p-0"
+          onClick={() => goToPage(i)}
+        >
+          {i}
+        </Button>
+      );
     }
-  }, [selectedListId, listLoading, fetchWards]);
 
-  useEffect(() => {
-    if (selectedListId && !listLoading) {
-      setCurrentPage(1);
-      setFamilies([]);
-      setHasMore(true);
-      fetchFamilies(1, false, selectedListId);
-    }
-  }, [selectedListId, listLoading, selectedWard, searchQuery]);
+    return buttons;
+  };
 
-  const loadMore = useCallback(() => {
-    if (loadingMore || !hasMore || !selectedListId) return;
-    setCurrentPage((prev) => {
-      const nextPage = prev + 1;
-      fetchFamilies(nextPage, true, selectedListId);
-      return nextPage;
-    });
-  }, [loadingMore, hasMore, fetchFamilies, selectedListId]);
-
-  const { sentinelRef } = useInfiniteScroll({
-    loading: loadingMore,
-    hasMore,
-    onLoadMore: loadMore,
-  });
+  const isLoading = isFetchingAll && allFamilies.length === 0;
 
   return (
     <div className="p-4 md:p-6 space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
-            <Home className="h-5 w-5 text-muted-foreground" />
-            Households
-          </h1>
+        <div className="flex-1" suppressHydrationWarning>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+              <Home className="h-5 w-5 text-muted-foreground" />
+              Households
+            </h1>
+            {!isOnline && (
+              <Badge variant="destructive" className="text-[10px]">
+                <WifiOff className="w-3 h-3 mr-1" />
+                Offline
+              </Badge>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">
-            {totalFamilies.toLocaleString()} households
+            {fetchComplete
+              ? `${allFamilies.length.toLocaleString()} households loaded`
+              : isFetchingAll
+              ? `Loading... ${allFamilies.length.toLocaleString()} of ${totalToFetch.toLocaleString()}`
+              : "Loading households..."}
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => selectedListId && fetchAllFamilies(selectedListId)}
+            disabled={isFetchingAll}
+          >
+            <RefreshCw
+              className={`h-4 w-4 mr-1 ${isFetchingAll ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
           <Button variant="outline" size="sm">
             <FileDown className="h-4 w-4 mr-1" />
             Export
@@ -251,16 +336,35 @@ export default function HouseholdsPage() {
         </div>
       </div>
 
+      {/* Loading Progress */}
+      {isFetchingAll && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              Loading households in batches...
+            </span>
+            <span className="font-medium">{Math.round(loadingProgress)}%</span>
+          </div>
+          <Progress value={loadingProgress} className="h-2" />
+        </div>
+      )}
+
       {/* Quick Stats */}
-      {!loading && families.length > 0 && (
+      {fetchComplete && filteredFamilies.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card>
             <CardContent className="p-3">
               <div className="flex items-center gap-2">
                 <Home className="h-4 w-4 text-muted-foreground" />
                 <div>
-                  <p className="text-lg font-bold">{families.length}</p>
-                  <p className="text-xs text-muted-foreground">Showing</p>
+                  <p className="text-lg font-bold">
+                    {filteredFamilies.length.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedWard !== "all" || searchQuery
+                      ? "Filtered"
+                      : "Total"}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -270,7 +374,9 @@ export default function HouseholdsPage() {
               <div className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-muted-foreground" />
                 <div>
-                  <p className="text-lg font-bold">{totalMembers}</p>
+                  <p className="text-lg font-bold">
+                    {totalMembers.toLocaleString()}
+                  </p>
                   <p className="text-xs text-muted-foreground">Members</p>
                 </div>
               </div>
@@ -310,7 +416,7 @@ export default function HouseholdsPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => fetchFamilies(1, false, selectedListId)}
+              onClick={() => selectedListId && fetchAllFamilies(selectedListId)}
             >
               <RefreshCw className="h-4 w-4 mr-1" />
               Retry
@@ -324,7 +430,7 @@ export default function HouseholdsPage() {
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search by house # or head name..."
+            placeholder="Search by house #, ward, or head name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9 h-9"
@@ -343,21 +449,41 @@ export default function HouseholdsPage() {
             ))}
           </SelectContent>
         </Select>
+        {(selectedWard !== "all" || searchQuery) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSearchQuery("");
+              setSelectedWard("all");
+            }}
+            className="h-9"
+          >
+            Clear filters
+          </Button>
+        )}
       </div>
 
       {/* Table */}
-      {loading ? (
+      {isLoading ? (
         <div className="flex h-48 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">
+              Loading households...
+            </p>
+          </div>
         </div>
-      ) : families.length === 0 ? (
+      ) : sortedFamilies.length === 0 ? (
         <div className="border rounded-lg p-12 text-center">
           <Home className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
           <p className="text-muted-foreground font-medium">
             No households found
           </p>
           <p className="text-sm text-muted-foreground/70 mt-1">
-            Try adjusting your filters
+            {allFamilies.length > 0
+              ? "Try adjusting your filters"
+              : "No data available"}
           </p>
         </div>
       ) : (
@@ -409,7 +535,7 @@ export default function HouseholdsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedFamilies.map((family, index) => {
+                {paginatedFamilies.map((family, index) => {
                   // Calculate gender counts from members if available
                   const maleCount =
                     family.members?.filter((m) =>
@@ -505,18 +631,63 @@ export default function HouseholdsPage() {
             </Table>
           </div>
 
-          <div ref={sentinelRef} className="h-2" />
-
-          {loadingMore && (
-            <div className="flex items-center justify-center py-3 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              Loading more...
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-2">
+              <p className="text-sm text-muted-foreground">
+                Showing{" "}
+                {((currentPage - 1) * ITEMS_PER_PAGE + 1).toLocaleString()} to{" "}
+                {Math.min(
+                  currentPage * ITEMS_PER_PAGE,
+                  sortedFamilies.length
+                ).toLocaleString()}{" "}
+                of {sortedFamilies.length.toLocaleString()} households
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => goToPage(1)}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                {renderPaginationButtons()}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => goToPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           )}
 
-          {!hasMore && families.length > 0 && (
+          {totalPages <= 1 && sortedFamilies.length > 0 && (
             <p className="text-center text-xs text-muted-foreground py-2">
-              Showing all {families.length.toLocaleString()} households
+              Showing all {sortedFamilies.length.toLocaleString()} households
             </p>
           )}
         </>

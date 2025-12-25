@@ -583,7 +583,23 @@ export function VoterTable({
                     </div>
                     {/* Name */}
                     <div className="flex-1 min-w-0 px-2">
-                      <div className="font-medium truncate">{voter.name}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="font-medium truncate flex-1">
+                          {voter.name}
+                        </div>
+                        {voter.mobile && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(`tel:${voter.mobile}`, "_self");
+                            }}
+                            className="h-7 w-7 rounded flex items-center justify-center bg-green-600 hover:bg-green-700 text-white transition-colors flex-shrink-0"
+                            title="Call voter"
+                          >
+                            <Phone className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
                       {voter.name_hindi && voter.name_hindi !== voter.name && (
                         <div className="text-xs text-muted-foreground truncate">
                           {voter.name_hindi}

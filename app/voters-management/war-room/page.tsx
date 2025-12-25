@@ -45,6 +45,8 @@ import {
   Keyboard,
   Calculator,
   Terminal,
+  WifiOff,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -229,6 +231,11 @@ export default function WarRoomPage() {
     queryFn: () => api.getCandidates({ list_id: selectedListId! }),
     enabled: !!selectedListId,
     staleTime: 60 * 1000, // 1 minute
+    gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   const ourCandidateId = useMemo(() => {
@@ -292,9 +299,12 @@ export default function WarRoomPage() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [showWardWarRoom, setShowWardWarRoom] = useState(false); // Toggle ward war room view
   const [showStrategyPanel, setShowStrategyPanel] = useState(false); // Strategy Engine panel
+  const [showMobileMenu, setShowMobileMenu] = useState(false); // Mobile menu sheet
   const [displayMode, setDisplayMode] = useState<"sentiment" | "turnout">(
     "sentiment"
   ); // Toggle sentiment/turnout view
+  const [isOnline, setIsOnline] = useState(true); // Network status
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null); // Last data update time
 
   // Opponent selector dialog state (for oppose sentiment)
   const [opponentDialogOpen, setOpponentDialogOpen] = useState(false);
@@ -314,6 +324,26 @@ export default function WarRoomPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Monitor network status
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    setIsOnline(navigator.onLine);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // Track data freshness
+  useEffect(() => {
+    if (overview || wards.length > 0) {
+      setLastUpdated(new Date());
+    }
+  }, [overview, wards]);
 
   // Search results - filter houses and targets based on query
   const searchResults = useMemo(() => {
@@ -714,6 +744,7 @@ export default function WarRoomPage() {
         ) : (
           <>
             {/* Left Sidebar - Shows WardFamiliesPanel when ward is selected, otherwise regular stats */}
+            {/* Mobile: Use Sheet, Desktop: Inline sidebar */}
             {!isSidebarCollapsed && selectedWard && selectedListId ? (
               <WardFamiliesPanel
                 wardNo={selectedWard}
@@ -728,7 +759,8 @@ export default function WarRoomPage() {
               <div
                 className={cn(
                   "bg-card border-r border-border flex flex-col overflow-hidden shrink-0 transition-all duration-300",
-                  isSidebarCollapsed ? "w-0 opacity-0" : "w-80"
+                  isSidebarCollapsed ? "w-0 opacity-0" : "w-72 md:w-80",
+                  "hidden md:flex" // Hide on mobile - use floating panel instead
                 )}
               >
                 {/* Header */}
@@ -737,16 +769,34 @@ export default function WarRoomPage() {
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-600 to-orange-600 shadow-lg shadow-red-900/50 flex items-center justify-center">
                       <MapIcon size={20} />
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0" suppressHydrationWarning>
                       <h1 className="text-base font-bold tracking-tight">
                         War Room
                       </h1>
                       <p className="text-white/60 text-xs">Village Dashboard</p>
                     </div>
-                    {/* Session Stats Inline */}
+                    {/* Session Stats & Network Status Inline */}
                     {sessionStats.tagged > 0 && (
                       <Badge className="bg-white/20 text-white border-0 text-[10px] shrink-0">
                         {sessionStats.tagged} tagged
+                      </Badge>
+                    )}
+                    {!isOnline && (
+                      <Badge
+                        variant="destructive"
+                        className="text-[10px] shrink-0"
+                      >
+                        <WifiOff className="w-3 h-3 mr-1" />
+                        Offline
+                      </Badge>
+                    )}
+                    {isOnline && error && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] shrink-0 text-orange-600 border-orange-600"
+                      >
+                        <AlertCircle className="w-3 h-3 mr-1" />
+                        Connection Issues
                       </Badge>
                     )}
                   </div>
@@ -1190,13 +1240,13 @@ export default function WarRoomPage() {
               </div>
             )}
 
-            {/* Sidebar Toggle Button */}
+            {/* Sidebar Toggle Button - Hidden on mobile */}
             <Button
               variant="secondary"
               size="icon"
               className={cn(
-                "absolute top-4 z-30 bg-white/90 hover:bg-white shadow-lg transition-all",
-                isSidebarCollapsed ? "left-4" : "left-[328px]"
+                "absolute top-4 z-30 bg-white/90 hover:bg-white shadow-lg transition-all hidden md:flex",
+                isSidebarCollapsed ? "left-4" : "left-[296px] lg:left-[328px]"
               )}
               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             >
@@ -1225,31 +1275,31 @@ export default function WarRoomPage() {
                 displayMode={displayMode}
               />
 
-              {/* Display Mode Toggle */}
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20">
+              {/* Display Mode Toggle - Responsive positioning */}
+              <div className="absolute top-4 left-4 md:left-1/2 md:-translate-x-1/2 z-20">
                 <div className="bg-white/95 backdrop-blur rounded-lg border shadow-lg p-1 flex gap-1">
                   <button
                     onClick={() => setDisplayMode("sentiment")}
                     className={cn(
-                      "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all",
+                      "flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all",
                       displayMode === "sentiment"
                         ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:text-foreground hover:bg-muted"
                     )}
                   >
-                    <Heart className="h-4 w-4" />
+                    <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
                     <span className="hidden sm:inline">Sentiment</span>
                   </button>
                   <button
                     onClick={() => setDisplayMode("turnout")}
                     className={cn(
-                      "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all",
+                      "flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all",
                       displayMode === "turnout"
                         ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:text-foreground hover:bg-muted"
                     )}
                   >
-                    <BarChart3 className="h-4 w-4" />
+                    <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4" />
                     <span className="hidden sm:inline">Turnout</span>
                   </button>
                 </div>
@@ -1269,13 +1319,13 @@ export default function WarRoomPage() {
                 />
               )}
 
-              {/* Keyboard Help Button */}
+              {/* Keyboard Help Button - Hidden on mobile */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="secondary"
                     size="icon"
-                    className="absolute bottom-4 right-4 z-20 bg-white/90 hover:bg-white shadow-lg"
+                    className="absolute bottom-4 right-4 z-20 bg-white/90 hover:bg-white shadow-lg hidden sm:flex"
                     onClick={() => setShowKeyboardHelp(true)}
                   >
                     <Keyboard size={18} />
@@ -1406,7 +1456,7 @@ export default function WarRoomPage() {
                 <Button
                   variant="default"
                   size="icon"
-                  className="absolute bottom-4 right-16 z-20 shadow-lg bg-gradient-to-br from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                  className="absolute bottom-4 right-4 sm:right-16 z-20 shadow-lg bg-gradient-to-br from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
                   onClick={() => setShowStrategyPanel(true)}
                 >
                   <Terminal size={18} />
@@ -1426,6 +1476,188 @@ export default function WarRoomPage() {
               }}
               onSelect={handleConfirmOppose}
             />
+
+            {/* Mobile Bottom Navigation */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border">
+              <div className="flex items-center justify-around p-2">
+                {/* Quick Stats */}
+                {overview && (
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="text-green-600 font-semibold">
+                      {overview.sentiment_breakdown?.support || 0}
+                    </span>
+                    <span className="text-yellow-600 font-semibold">
+                      {overview.sentiment_breakdown?.swing || 0}
+                    </span>
+                    <span className="text-red-600 font-semibold">
+                      {overview.sentiment_breakdown?.oppose || 0}
+                    </span>
+                  </div>
+                )}
+                {/* Menu Button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  onClick={() => setShowMobileMenu(true)}
+                >
+                  <MapIcon className="h-4 w-4 mr-2" />
+                  Wards ({wards.length})
+                </Button>
+                {/* Refresh */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9"
+                  onClick={() => refetchData()}
+                  disabled={isFetching}
+                >
+                  <RefreshCw
+                    className={cn("h-4 w-4", isFetching && "animate-spin")}
+                  />
+                </Button>
+              </div>
+            </div>
+
+            {/* Mobile Menu Sheet */}
+            <Sheet open={showMobileMenu} onOpenChange={setShowMobileMenu}>
+              <SheetContent side="bottom" className="h-[70vh] p-0 rounded-t-xl">
+                <SheetHeader className="px-4 py-3 border-b">
+                  <SheetTitle className="text-left">War Room</SheetTitle>
+                </SheetHeader>
+                <ScrollArea className="h-full pb-20">
+                  <div className="p-4 space-y-4">
+                    {/* Search */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        type="text"
+                        placeholder="Search voter or house..."
+                        className="pl-9 h-10"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                      />
+                    </div>
+
+                    {/* Quick Stats */}
+                    {overview && (
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-center">
+                          <div className="text-xl font-bold text-green-600">
+                            {overview.sentiment_breakdown?.support || 0}
+                          </div>
+                          <div className="text-xs text-green-600/80">
+                            Support
+                          </div>
+                        </div>
+                        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-center">
+                          <div className="text-xl font-bold text-yellow-600">
+                            {overview.sentiment_breakdown?.swing || 0}
+                          </div>
+                          <div className="text-xs text-yellow-600/80">
+                            Swing
+                          </div>
+                        </div>
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-center">
+                          <div className="text-xl font-bold text-red-600">
+                            {overview.sentiment_breakdown?.oppose || 0}
+                          </div>
+                          <div className="text-xs text-red-600/80">Oppose</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Coverage */}
+                    <div className="bg-muted/30 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">Coverage</span>
+                        <span className="text-sm text-muted-foreground">
+                          {coverageStats.percentage.toFixed(0)}%
+                        </span>
+                      </div>
+                      <Progress
+                        value={coverageStats.percentage}
+                        className="h-2"
+                      />
+                      <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+                        <span>
+                          {coverageStats.tagged}/{coverageStats.total} houses
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs px-2"
+                          onClick={() => {
+                            findNextUntagged();
+                            setShowMobileMenu(false);
+                          }}
+                        >
+                          <Target className="h-3 w-3 mr-1" />
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Ward List */}
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-semibold text-muted-foreground">
+                        Wards ({wards.length})
+                      </h3>
+                      <div className="space-y-1">
+                        {wards.map((ward) => {
+                          const statusConfig = WARD_STATUS_COLORS[ward.status];
+                          return (
+                            <button
+                              key={ward.ward_no}
+                              onClick={() => {
+                                handleSelectWard(ward.ward_no);
+                                setShowMobileMenu(false);
+                              }}
+                              className="w-full flex items-center gap-3 p-3 rounded-lg bg-card border border-border hover:bg-muted/50 transition-colors"
+                            >
+                              <div
+                                className="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm"
+                                style={{
+                                  backgroundColor: statusConfig.fill,
+                                  color: statusConfig.stroke,
+                                }}
+                              >
+                                {ward.ward_no}
+                              </div>
+                              <div className="flex-1 text-left">
+                                <div className="font-medium">
+                                  Ward {ward.ward_no}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {ward.total_voters} voters
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div
+                                  className={cn(
+                                    "text-sm font-semibold",
+                                    ward.win_margin_percent > 0
+                                      ? "text-green-600"
+                                      : "text-red-600"
+                                  )}
+                                >
+                                  {ward.win_margin_percent > 0 ? "+" : ""}
+                                  {ward.win_margin_percent.toFixed(0)}%
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {(houses.get(ward.ward_no) || []).length}{" "}
+                                  houses
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </ScrollArea>
+              </SheetContent>
+            </Sheet>
           </>
         )}
       </div>

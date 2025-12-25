@@ -224,90 +224,90 @@ export function VillageMap({
       ref={containerRef}
       className="relative w-full h-full bg-slate-900 rounded-2xl overflow-hidden"
     >
-      {/* Controls */}
-      <div className="absolute top-4 right-4 z-20 flex gap-2">
+      {/* Controls - Responsive positioning */}
+      <div className="absolute top-4 right-4 z-20 flex flex-col sm:flex-row gap-2">
         <Button
           variant="secondary"
           size="icon"
           onClick={() => setScale((s) => Math.min(s + 0.2, 3))}
-          className="bg-white/90 hover:bg-white shadow-lg"
+          className="bg-white/90 hover:bg-white shadow-lg h-8 w-8 sm:h-10 sm:w-10"
         >
-          <ZoomIn size={18} />
+          <ZoomIn className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
         </Button>
         <Button
           variant="secondary"
           size="icon"
           onClick={() => setScale((s) => Math.max(s - 0.2, 0.5))}
-          className="bg-white/90 hover:bg-white shadow-lg"
+          className="bg-white/90 hover:bg-white shadow-lg h-8 w-8 sm:h-10 sm:w-10"
         >
-          <ZoomOut size={18} />
+          <ZoomOut className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
         </Button>
         <Button
           variant="secondary"
           size="icon"
           onClick={resetView}
-          className="bg-white/90 hover:bg-white shadow-lg"
+          className="bg-white/90 hover:bg-white shadow-lg h-8 w-8 sm:h-10 sm:w-10"
         >
-          <Maximize size={18} />
+          <Maximize className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
         </Button>
       </div>
 
-      {/* Legend */}
-      <div className="absolute bottom-4 left-4 z-20 bg-white/95 backdrop-blur-sm rounded-xl p-3 shadow-lg">
-        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-          {displayMode === "sentiment" ? "Sentiment Map" : "Turnout Map"}
+      {/* Legend - Responsive sizing */}
+      <div className="absolute bottom-4 left-4 z-20 bg-white/95 backdrop-blur-sm rounded-lg sm:rounded-xl p-2 sm:p-3 shadow-lg max-w-[140px] sm:max-w-none">
+        <h4 className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 sm:mb-2">
+          {displayMode === "sentiment" ? "Sentiment" : "Turnout"}
         </h4>
         {displayMode === "sentiment" ? (
-          <div className="space-y-1.5 text-xs">
-            <div className="flex items-center gap-2">
+          <div className="space-y-1 sm:space-y-1.5 text-[10px] sm:text-xs">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <div
-                className="w-4 h-4 rounded"
+                className="w-3 h-3 sm:w-4 sm:h-4 rounded"
                 style={{ backgroundColor: SENTIMENT_COLORS.support.bg }}
               />
               <span className="text-slate-700">Support</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <div
-                className="w-4 h-4 rounded"
+                className="w-3 h-3 sm:w-4 sm:h-4 rounded"
                 style={{ backgroundColor: SENTIMENT_COLORS.oppose.bg }}
               />
               <span className="text-slate-700">Oppose</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <div
-                className="w-4 h-4 rounded"
+                className="w-3 h-3 sm:w-4 sm:h-4 rounded"
                 style={{ backgroundColor: SENTIMENT_COLORS.swing.bg }}
               />
               <span className="text-slate-700">Swing</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <div
-                className="w-4 h-4 rounded"
+                className="w-3 h-3 sm:w-4 sm:h-4 rounded"
                 style={{ backgroundColor: SENTIMENT_COLORS.unknown.bg }}
               />
               <span className="text-slate-700">Unknown</span>
             </div>
           </div>
         ) : (
-          <div className="space-y-1.5 text-xs">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-green-500" />
+          <div className="space-y-1 sm:space-y-1.5 text-[10px] sm:text-xs">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="w-3 h-3 sm:w-4 sm:h-4 rounded bg-green-500" />
               <span className="text-slate-700">High (80%+)</span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-cyan-500" />
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="w-3 h-3 sm:w-4 sm:h-4 rounded bg-cyan-500" />
               <span className="text-slate-700">Good (60-80%)</span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-amber-500" />
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="w-3 h-3 sm:w-4 sm:h-4 rounded bg-amber-500" />
               <span className="text-slate-700">Medium (40-60%)</span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-gray-500" />
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="w-3 h-3 sm:w-4 sm:h-4 rounded bg-gray-500" />
               <span className="text-slate-700">Low (20-40%)</span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-red-500" />
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="w-3 h-3 sm:w-4 sm:h-4 rounded bg-red-500" />
               <span className="text-slate-700">Critical (&lt;20%)</span>
             </div>
           </div>

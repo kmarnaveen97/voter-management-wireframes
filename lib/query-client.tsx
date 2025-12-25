@@ -144,6 +144,7 @@ export const queryKeys = {
       ["polling", listId, "booth", boothId] as const,
     boothStats: (listId: number, wardNo?: string) =>
       ["polling", listId, "boothStats", wardNo] as const,
+    statsRaw: (listId: number) => ["polling", listId, "statsRaw"] as const,
     boothVoters: (listId: number, boothId: number) =>
       ["polling", listId, "booth", boothId, "voters"] as const,
   },

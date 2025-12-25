@@ -586,16 +586,33 @@ export function FieldWorkerView({ maxPriority = 6 }: FieldWorkerViewProps) {
               )}
             >
               <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg">{voter.name}</CardTitle>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-lg flex-1 truncate">
+                        {voter.name}
+                      </CardTitle>
+                      {voter.mobile && (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCall(voter.mobile);
+                          }}
+                          className="bg-green-600 hover:bg-green-700 h-8 px-2"
+                        >
+                          <Phone className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                     <p className="text-sm text-muted-foreground mt-1">
                       {voter.relative_name}
                     </p>
                   </div>
                   <Badge
                     className={cn(
-                      "text-white",
+                      "text-white flex-shrink-0",
                       getPriorityColor(voter.priority)
                     )}
                   >

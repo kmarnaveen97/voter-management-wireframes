@@ -43,6 +43,7 @@ import {
   Ban,
   MoreVertical,
   FileText,
+  Phone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -247,12 +248,26 @@ export function TurnoutTable({
                     {voter.serial_no}
                   </TableCell>
                   <TableCell>
-                    <div>
-                      <div className="font-medium">{voter.name}</div>
-                      {voter.name_hindi && (
-                        <div className="text-sm text-muted-foreground">
-                          {voter.name_hindi}
-                        </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium">{voter.name}</div>
+                        {voter.name_hindi && (
+                          <div className="text-sm text-muted-foreground">
+                            {voter.name_hindi}
+                          </div>
+                        )}
+                      </div>
+                      {voter.mobile && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(`tel:${voter.mobile}`, "_self");
+                          }}
+                          className="h-7 w-7 rounded flex items-center justify-center bg-green-600 hover:bg-green-700 text-white transition-colors shrink-0"
+                          title="Call voter"
+                        >
+                          <Phone className="h-4 w-4" />
+                        </button>
                       )}
                     </div>
                   </TableCell>

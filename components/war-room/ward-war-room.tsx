@@ -379,49 +379,49 @@ export function WardWarRoom({
 
   return (
     <div className="flex-1 flex flex-col bg-slate-900 overflow-hidden">
-      {/* Header */}
-      <div className="bg-slate-800 border-b border-slate-700 p-4 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      {/* Header - Responsive */}
+      <div className="bg-slate-800 border-b border-slate-700 p-3 sm:p-4 shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0 sm:justify-between">
+          <div className="flex items-center gap-3 sm:gap-4">
             <Button
               variant="ghost"
               size="icon"
-              className="text-white/70 hover:text-white hover:bg-white/10"
+              className="text-white/70 hover:text-white hover:bg-white/10 h-8 w-8 sm:h-10 sm:w-10"
               onClick={onClose}
             >
-              <ChevronLeft size={24} />
+              <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
             </Button>
             <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-xl font-bold text-white">
-                  Ward {wardNo} War Room
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                <h1 className="text-lg sm:text-xl font-bold text-white">
+                  Ward {wardNo}
                 </h1>
                 <Badge
                   style={{
                     backgroundColor: statusConfig.fill,
                     color: statusConfig.stroke,
                   }}
-                  className="border-0 font-semibold"
+                  className="border-0 font-semibold text-xs"
                 >
                   {statusConfig.label}
                 </Badge>
               </div>
-              <p className="text-white/60 text-sm mt-0.5">
+              <p className="text-white/60 text-xs sm:text-sm mt-0.5">
                 {wardStats.stationCount} stations • {wardStats.houseCount}{" "}
                 houses • {wardStats.total} voters
               </p>
             </div>
           </div>
 
-          {/* Controls */}
-          <div className="flex items-center gap-3">
+          {/* Controls - Stack on mobile */}
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <div className="relative flex-1 sm:flex-initial">
+              <Search className="absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />
               <Input
                 type="text"
-                placeholder="Search house..."
-                className="pl-9 h-9 w-40 bg-slate-700 border-slate-600 text-white placeholder:text-slate-400"
+                placeholder="Search..."
+                className="pl-8 sm:pl-9 h-8 sm:h-9 w-full sm:w-32 md:w-40 text-sm bg-slate-700 border-slate-600 text-white placeholder:text-slate-400"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -434,11 +434,11 @@ export function WardWarRoom({
                 setSentimentFilter(v as SentimentType | "all")
               }
             >
-              <SelectTrigger className="w-32 h-9 bg-slate-700 border-slate-600 text-white">
+              <SelectTrigger className="w-24 sm:w-32 h-8 sm:h-9 text-xs sm:text-sm bg-slate-700 border-slate-600 text-white">
                 <SelectValue placeholder="Filter" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Houses</SelectItem>
+                <SelectItem value="all">All</SelectItem>
                 <SelectItem value="support">Support</SelectItem>
                 <SelectItem value="oppose">Oppose</SelectItem>
                 <SelectItem value="swing">Swing</SelectItem>
@@ -446,20 +446,20 @@ export function WardWarRoom({
               </SelectContent>
             </Select>
 
-            {/* Expand/Collapse */}
-            <div className="flex items-center gap-1">
+            {/* Expand/Collapse - Hide on very small screens */}
+            <div className="hidden sm:flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-9 text-white/70 hover:text-white hover:bg-white/10 text-xs"
+                className="h-8 sm:h-9 text-white/70 hover:text-white hover:bg-white/10 text-xs"
                 onClick={expandAll}
               >
-                Expand All
+                Expand
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-9 text-white/70 hover:text-white hover:bg-white/10 text-xs"
+                className="h-8 sm:h-9 text-white/70 hover:text-white hover:bg-white/10 text-xs"
                 onClick={collapseAll}
               >
                 Collapse
@@ -468,33 +468,36 @@ export function WardWarRoom({
           </div>
         </div>
 
-        {/* Stats Bar */}
-        <div className="flex items-center gap-6 mt-4">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-green-500" />
-            <span className="text-white/80 text-sm">
-              {wardStats.support} Support
+        {/* Stats Bar - Responsive wrapping */}
+        <div className="flex flex-wrap items-center gap-3 sm:gap-6 mt-3 sm:mt-4">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-green-500" />
+            <span className="text-white/80 text-xs sm:text-sm">
+              {wardStats.support}{" "}
+              <span className="hidden sm:inline">Support</span>
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-red-500" />
-            <span className="text-white/80 text-sm">
-              {wardStats.oppose} Oppose
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-red-500" />
+            <span className="text-white/80 text-xs sm:text-sm">
+              {wardStats.oppose}{" "}
+              <span className="hidden sm:inline">Oppose</span>
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-yellow-500" />
-            <span className="text-white/80 text-sm">
-              {wardStats.swing} Swing
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-yellow-500" />
+            <span className="text-white/80 text-xs sm:text-sm">
+              {wardStats.swing} <span className="hidden sm:inline">Swing</span>
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-gray-400" />
-            <span className="text-white/80 text-sm">
-              {wardStats.unknown} Unknown
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-gray-400" />
+            <span className="text-white/80 text-xs sm:text-sm">
+              {wardStats.unknown}{" "}
+              <span className="hidden sm:inline">Unknown</span>
             </span>
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto hidden sm:block">
             <Progress
               value={(wardStats.support / (wardStats.total || 1)) * 100}
               className="w-32 h-2 bg-slate-700"
@@ -504,9 +507,12 @@ export function WardWarRoom({
       </div>
 
       {/* Houses Grid View - Grouped by Polling Station & Booth */}
-      <div ref={containerRef} className="flex-1 relative overflow-auto p-6">
+      <div
+        ref={containerRef}
+        className="flex-1 relative overflow-auto p-3 sm:p-6"
+      >
         <div
-          className="min-h-full space-y-4"
+          className="min-h-full space-y-3 sm:space-y-4"
           style={{
             transform: `scale(${scale})`,
             transformOrigin: "top left",
@@ -535,7 +541,7 @@ export function WardWarRoom({
               >
                 {/* Polling Station Header */}
                 <button
-                  className="w-full flex items-center justify-between p-4 hover:bg-slate-700/50 transition-colors"
+                  className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-slate-700/50 transition-colors"
                   onClick={() => {
                     setExpandedStations((prev) => {
                       const next = new Set(prev);
@@ -548,45 +554,48 @@ export function WardWarRoom({
                     });
                   }}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 sm:gap-3">
                     <div
                       className={cn(
-                        "w-8 h-8 rounded-lg flex items-center justify-center transition-transform",
+                        "w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center transition-transform",
                         isStationExpanded ? "bg-blue-500/20" : "bg-slate-700"
                       )}
                     >
                       {isStationExpanded ? (
-                        <ChevronDown size={18} className="text-blue-400" />
+                        <ChevronDown className="h-4 w-4 sm:h-[18px] sm:w-[18px] text-blue-400" />
                       ) : (
-                        <ChevronRight size={18} className="text-slate-400" />
+                        <ChevronRight className="h-4 w-4 sm:h-[18px] sm:w-[18px] text-slate-400" />
                       )}
                     </div>
                     <div className="text-left">
-                      <h3 className="font-semibold text-white">
+                      <h3 className="font-semibold text-white text-sm sm:text-base">
                         {station.ps_name}
                       </h3>
-                      <p className="text-xs text-slate-400">
-                        PS Code: {psCode} • {station.booths.size}{" "}
+                      <p className="text-[10px] sm:text-xs text-slate-400">
+                        {psCode} • {station.booths.size}{" "}
                         {station.booths.size === 1 ? "booth" : "booths"} •{" "}
                         {stationStats.total} houses
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 sm:gap-4">
                     {/* Station Stats Mini */}
-                    <div className="flex items-center gap-3 text-xs">
+                    <div className="flex items-center gap-2 sm:gap-3 text-[10px] sm:text-xs">
                       <span className="text-green-400">
-                        {stationStats.support} ✓
+                        {stationStats.support}{" "}
+                        <span className="hidden sm:inline">✓</span>
                       </span>
                       <span className="text-red-400">
-                        {stationStats.oppose} ✗
+                        {stationStats.oppose}{" "}
+                        <span className="hidden sm:inline">✗</span>
                       </span>
                       <span className="text-yellow-400">
-                        {stationStats.swing} ?
+                        {stationStats.swing}{" "}
+                        <span className="hidden sm:inline">?</span>
                       </span>
                     </div>
-                    {/* Progress */}
-                    <div className="w-24 h-2 bg-slate-700 rounded-full overflow-hidden flex">
+                    {/* Progress - Hidden on very small screens */}
+                    <div className="hidden sm:flex w-20 sm:w-24 h-2 bg-slate-700 rounded-full overflow-hidden">
                       {stationStats.support > 0 && (
                         <div
                           className="bg-green-500 h-full"
@@ -649,7 +658,7 @@ export function WardWarRoom({
                           >
                             {/* Polling Booth Header */}
                             <button
-                              className="w-full flex items-center justify-between p-3 pl-8 hover:bg-slate-700/30 transition-colors"
+                              className="w-full flex items-center justify-between p-2.5 sm:p-3 pl-6 sm:pl-8 hover:bg-slate-700/30 transition-colors"
                               onClick={() => {
                                 setExpandedBooths((prev) => {
                                   const key = `${psCode}-${pbCode}`;
@@ -663,39 +672,33 @@ export function WardWarRoom({
                                 });
                               }}
                             >
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2 sm:gap-3">
                                 <div
                                   className={cn(
-                                    "w-6 h-6 rounded flex items-center justify-center transition-transform",
+                                    "w-5 h-5 sm:w-6 sm:h-6 rounded flex items-center justify-center transition-transform",
                                     isBoothExpanded
                                       ? "bg-purple-500/20"
                                       : "bg-slate-700/50"
                                   )}
                                 >
                                   {isBoothExpanded ? (
-                                    <ChevronDown
-                                      size={14}
-                                      className="text-purple-400"
-                                    />
+                                    <ChevronDown className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-purple-400" />
                                   ) : (
-                                    <ChevronRight
-                                      size={14}
-                                      className="text-slate-400"
-                                    />
+                                    <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-slate-400" />
                                   )}
                                 </div>
                                 <div className="text-left">
-                                  <h4 className="font-medium text-white/90 text-sm">
+                                  <h4 className="font-medium text-white/90 text-xs sm:text-sm">
                                     {booth.pb_name}
                                   </h4>
-                                  <p className="text-xs text-slate-500">
-                                    Booth: {pbCode} • {boothStats.total} houses
+                                  <p className="text-[10px] sm:text-xs text-slate-500">
+                                    {pbCode} • {boothStats.total} houses
                                   </p>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2 sm:gap-3">
                                 {/* Booth Stats Mini */}
-                                <div className="flex items-center gap-2 text-xs">
+                                <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs">
                                   <span className="text-green-400">
                                     {boothStats.support}
                                   </span>
@@ -706,8 +709,8 @@ export function WardWarRoom({
                                     {boothStats.swing}
                                   </span>
                                 </div>
-                                {/* Mini Progress */}
-                                <div className="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden flex">
+                                {/* Mini Progress - Hidden on very small screens */}
+                                <div className="hidden sm:flex w-12 sm:w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
                                   {boothStats.support > 0 && (
                                     <div
                                       className="bg-green-500 h-full"
@@ -748,13 +751,13 @@ export function WardWarRoom({
                               </div>
                             </button>
 
-                            {/* Houses Grid within Booth */}
+                            {/* Houses Grid within Booth - Responsive */}
                             {isBoothExpanded && (
-                              <div className="p-4 pl-12 bg-slate-900/30">
+                              <div className="p-3 sm:p-4 pl-8 sm:pl-12 bg-slate-900/30">
                                 <div
-                                  className="grid gap-3"
+                                  className="grid gap-2 sm:gap-3"
                                   style={{
-                                    gridTemplateColumns: `repeat(auto-fill, minmax(140px, 1fr))`,
+                                    gridTemplateColumns: `repeat(auto-fill, minmax(110px, 1fr))`,
                                   }}
                                 >
                                   {booth.houses.map((house) => {
@@ -768,7 +771,7 @@ export function WardWarRoom({
                                       <div
                                         key={house.house_no}
                                         className={cn(
-                                          "relative bg-slate-800 rounded-lg border-2 p-3 cursor-pointer transition-all duration-200 min-h-[100px]",
+                                          "relative bg-slate-800 rounded-lg border-2 p-2 sm:p-3 cursor-pointer transition-all duration-200 min-h-[80px] sm:min-h-[100px]",
                                           isHovered
                                             ? "border-white shadow-lg scale-[1.02]"
                                             : "border-slate-700 hover:border-slate-500 active:scale-95"
@@ -786,16 +789,16 @@ export function WardWarRoom({
                                         onClick={() => onHouseClick(house)}
                                       >
                                         {/* House Icon & Number */}
-                                        <div className="flex items-start justify-between mb-2">
+                                        <div className="flex items-start justify-between mb-1.5 sm:mb-2">
                                           <div
-                                            className="w-8 h-8 rounded-lg flex items-center justify-center"
+                                            className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center"
                                             style={{
                                               backgroundColor:
                                                 sentimentConfig.bg + "30",
                                             }}
                                           >
                                             <Home
-                                              size={16}
+                                              className="h-3 w-3 sm:h-4 sm:w-4"
                                               style={{
                                                 color: sentimentConfig.bg,
                                               }}
@@ -804,18 +807,18 @@ export function WardWarRoom({
                                           {house.has_manual_tag && (
                                             <Badge
                                               variant="secondary"
-                                              className="text-[9px] bg-slate-700 text-slate-300"
+                                              className="text-[8px] sm:text-[9px] bg-slate-700 text-slate-300 px-1"
                                             >
-                                              Tagged
+                                              Tag
                                             </Badge>
                                           )}
                                         </div>
 
                                         {/* House Details */}
-                                        <h3 className="font-bold text-white text-base">
+                                        <h3 className="font-bold text-white text-sm sm:text-base">
                                           #{house.house_no}
                                         </h3>
-                                        <p className="text-slate-400 text-xs mt-0.5">
+                                        <p className="text-slate-400 text-[10px] sm:text-xs mt-0.5">
                                           {house.family_size}{" "}
                                           {house.family_size === 1
                                             ? "member"
@@ -871,9 +874,9 @@ export function WardWarRoom({
 
                                         {/* Quick Tag Buttons - Show on Hover/Touch */}
                                         {isHovered && (
-                                          <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 bg-slate-900 rounded-full p-1.5 shadow-xl border border-slate-600">
+                                          <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 flex gap-1 sm:gap-1.5 bg-slate-900 rounded-full p-1 sm:p-1.5 shadow-xl border border-slate-600">
                                             <button
-                                              className="w-9 h-9 rounded-full bg-green-500/20 hover:bg-green-500/40 active:bg-green-500/60 flex items-center justify-center transition-colors touch-manipulation"
+                                              className="w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-green-500/20 hover:bg-green-500/40 active:bg-green-500/60 flex items-center justify-center transition-colors touch-manipulation"
                                               onClick={(e) => {
                                                 e.stopPropagation();
                                                 onTagSentiment(
@@ -884,13 +887,10 @@ export function WardWarRoom({
                                               }}
                                               title="Support"
                                             >
-                                              <CheckCircle2
-                                                size={16}
-                                                className="text-green-400"
-                                              />
+                                              <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-400" />
                                             </button>
                                             <button
-                                              className="w-9 h-9 rounded-full bg-red-500/20 hover:bg-red-500/40 active:bg-red-500/60 flex items-center justify-center transition-colors touch-manipulation"
+                                              className="w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-red-500/20 hover:bg-red-500/40 active:bg-red-500/60 flex items-center justify-center transition-colors touch-manipulation"
                                               onClick={(e) => {
                                                 e.stopPropagation();
                                                 onTagSentiment(
@@ -901,13 +901,10 @@ export function WardWarRoom({
                                               }}
                                               title="Oppose"
                                             >
-                                              <XCircle
-                                                size={16}
-                                                className="text-red-400"
-                                              />
+                                              <XCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-400" />
                                             </button>
                                             <button
-                                              className="w-9 h-9 rounded-full bg-yellow-500/20 hover:bg-yellow-500/40 active:bg-yellow-500/60 flex items-center justify-center transition-colors touch-manipulation"
+                                              className="w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-yellow-500/20 hover:bg-yellow-500/40 active:bg-yellow-500/60 flex items-center justify-center transition-colors touch-manipulation"
                                               onClick={(e) => {
                                                 e.stopPropagation();
                                                 onTagSentiment(
@@ -918,10 +915,7 @@ export function WardWarRoom({
                                               }}
                                               title="Swing"
                                             >
-                                              <HelpCircle
-                                                size={16}
-                                                className="text-yellow-400"
-                                              />
+                                              <HelpCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-yellow-400" />
                                             </button>
                                           </div>
                                         )}
@@ -956,11 +950,16 @@ export function WardWarRoom({
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="bg-slate-800 border-t border-slate-700 px-4 py-2 shrink-0">
-        <div className="flex items-center justify-between text-xs text-slate-400">
-          <span>Click a house card to view details • Hover to quick tag</span>
-          <span>Press ESC to go back</span>
+      {/* Legend - Responsive */}
+      <div className="bg-slate-800 border-t border-slate-700 px-3 sm:px-4 py-2 shrink-0">
+        <div className="flex items-center justify-between text-[10px] sm:text-xs text-slate-400">
+          <span className="hidden sm:inline">
+            Click a house card to view details • Hover to quick tag
+          </span>
+          <span className="sm:hidden">
+            Tap house to view • Long press to tag
+          </span>
+          <span>ESC to go back</span>
         </div>
       </div>
     </div>

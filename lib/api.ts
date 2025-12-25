@@ -22,6 +22,7 @@ export interface Voter {
   pb_code?: string;
   pb_name?: string;
   voter_id_number?: string;
+  mobile?: string | null;
   // Sentiment data (optional, populated from sentiment API)
   sentiment?: "support" | "oppose" | "swing" | "unknown" | "neutral";
   sentiment_source?: "manual" | "inherited" | "computed";
@@ -433,20 +434,120 @@ export interface Election {
   name?: string;
 }
 
+export interface ComparisonSummary {
+  total_old: number;
+  total_new: number;
+  matched: number;
+  corrected: number;
+  new_voters: number;
+  deleted_voters: number;
+}
+
+export interface ComparisonMatchedItem {
+  old: Voter;
+  new: Voter;
+  ward: string;
+}
+
+export interface ComparisonCorrectedItem {
+  old: Voter;
+  new: Voter;
+  ward: string;
+  name_score: number;
+  relative_score: number;
+}
+
+export interface ComparisonNewDeletedItem {
+  voter: Voter;
+  ward: string;
+}
+
+export interface ComparisonWardBreakdown {
+  [ward: string]: {
+    matched: number;
+    corrected: number;
+    new: number;
+    deleted: number;
+  };
+}
+
 export interface ComparisonJob {
   job_id: string;
   status: "processing" | "completed" | "error";
+  progress?: number;
   message?: string;
+  error?: string;
+  result?: {
+    summary: ComparisonSummary;
+    matched: ComparisonMatchedItem[];
+    corrected: ComparisonCorrectedItem[];
+    new_voters: ComparisonNewDeletedItem[];
+    deleted_voters: ComparisonNewDeletedItem[];
+    ward_breakdown?: ComparisonWardBreakdown;
+  };
+}
+
+// Saved comparison metadata for listing
+export interface SavedComparison {
+  job_id: string;
+  old_list_id: number;
+  new_list_id: number;
+  old_list_name?: string;
+  new_list_name?: string;
+  status: "pending" | "processing" | "completed" | "error";
+  matched_count?: number;
+  corrected_count?: number;
+  new_voters_count?: number;
+  deleted_voters_count?: number;
+  created_at: string;
+  completed_at?: string;
+}
+
+// Response for GET /api/comparisons
+export interface SavedComparisonsResponse {
+  comparisons: SavedComparison[];
+}
+
+// Full saved comparison report - GET /api/comparisons/{job_id}
+export interface SavedComparisonReport {
+  job_id: string;
+  old_list_id: number;
+  new_list_id: number;
+  old_list_name?: string;
+  new_list_name?: string;
+  status: "pending" | "processing" | "completed" | "error";
+  summary?: ComparisonSummary;
+  result?: {
+    summary?: ComparisonSummary;
+    matched: ComparisonMatchedItem[];
+    corrected: ComparisonCorrectedItem[];
+    new_voters: ComparisonNewDeletedItem[];
+    deleted_voters: ComparisonNewDeletedItem[];
+    ward_breakdown?: ComparisonWardBreakdown;
+  };
+  created_at?: string;
+  completed_at?: string;
+}
+
+// Delete comparison response
+export interface DeleteComparisonResponse {
+  success: boolean;
+  message: string;
+  job_id: string;
 }
 
 export interface ComparisonResult {
-  job_id: string;
-  list1_id: number;
-  list2_id: number;
-  additions: Voter[];
-  deletions: Voter[];
-  total_additions: number;
-  total_deletions: number;
+  status: "completed";
+  old_count: number;
+  new_count: number;
+  result: {
+    summary: ComparisonSummary;
+    matched: ComparisonMatchedItem[];
+    corrected: ComparisonCorrectedItem[];
+    new_voters: ComparisonNewDeletedItem[];
+    deleted_voters: ComparisonNewDeletedItem[];
+    ward_breakdown?: ComparisonWardBreakdown;
+  };
 }
 
 export interface HealthStatus {
@@ -1889,31 +1990,89 @@ export const api = {
   // Comparison
   // --------------------------------------------------------------------------
 
-  /** Start comparison - POST /api/compare */
+  /** Start async comparison - POST /api/compare-lists */
   compareVoterLists: async (
-    list1Id: number,
-    list2Id: number
+    oldListId: number,
+    newListId: number,
+    options?: { name_threshold?: number; relative_threshold?: number }
   ): Promise<ComparisonJob> => {
-    const res = await fetch(`${API_BASE_URL}/api/compare`, {
+    const res = await fetch(`${API_BASE_URL}/api/compare-lists`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ list1_id: list1Id, list2_id: list2Id }),
+      body: JSON.stringify({
+        old_list_id: oldListId,
+        new_list_id: newListId,
+        name_threshold: options?.name_threshold ?? 85,
+        relative_threshold: options?.relative_threshold ?? 80,
+      }),
     });
     if (!res.ok) throw new Error("Failed to start comparison");
     return res.json();
   },
 
-  /** Check comparison status - GET /api/compare/status/{job_id} */
+  /** Check comparison status - GET /api/compare-status/{job_id} */
   getComparisonStatus: async (jobId: string): Promise<ComparisonJob> => {
-    const res = await fetch(`${API_BASE_URL}/api/compare/status/${jobId}`);
+    const res = await fetch(`${API_BASE_URL}/api/compare-status/${jobId}`);
     if (!res.ok) throw new Error("Failed to fetch comparison status");
     return res.json();
   },
 
-  /** Get comparison results - GET /api/compare/results/{job_id} */
-  getComparisonResults: async (jobId: string): Promise<ComparisonResult> => {
-    const res = await fetch(`${API_BASE_URL}/api/compare/results/${jobId}`);
-    if (!res.ok) throw new Error("Failed to fetch comparison results");
+  /** Sync comparison for small lists - POST /api/compare-sync */
+  compareVoterListsSync: async (
+    oldListId: number,
+    newListId: number,
+    options?: { name_threshold?: number; relative_threshold?: number }
+  ): Promise<ComparisonResult> => {
+    const res = await fetch(`${API_BASE_URL}/api/compare-sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        old_list_id: oldListId,
+        new_list_id: newListId,
+        name_threshold: options?.name_threshold ?? 85,
+        relative_threshold: options?.relative_threshold ?? 80,
+      }),
+    });
+    if (!res.ok) throw new Error("Failed to compare lists");
+    return res.json();
+  },
+
+  /** List all saved comparisons - GET /api/comparisons */
+  getSavedComparisons: async (params?: {
+    list_id?: number;
+    status?: "pending" | "processing" | "completed" | "error";
+    limit?: number;
+  }): Promise<SavedComparisonsResponse> => {
+    const queryParams = new URLSearchParams();
+    if (params?.list_id) queryParams.append("list_id", String(params.list_id));
+    if (params?.status) queryParams.append("status", params.status);
+    if (params?.limit) queryParams.append("limit", String(params.limit));
+
+    const queryString = queryParams.toString();
+    const url = queryString
+      ? `${API_BASE_URL}/api/comparisons?${queryString}`
+      : `${API_BASE_URL}/api/comparisons`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Failed to fetch saved comparisons");
+    return res.json();
+  },
+
+  /** Get saved comparison report - GET /api/comparisons/{job_id} */
+  getSavedComparison: async (jobId: string): Promise<SavedComparisonReport> => {
+    const res = await fetch(`${API_BASE_URL}/api/comparisons/${jobId}`);
+    if (!res.ok) throw new Error("Failed to fetch comparison report");
+    return res.json();
+  },
+
+  /** Delete saved comparison - DELETE /api/comparisons/{job_id} */
+  deleteSavedComparison: async (
+    jobId: string
+  ): Promise<DeleteComparisonResponse> => {
+    const res = await fetch(`${API_BASE_URL}/api/comparisons/${jobId}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) throw new Error("Failed to delete comparison");
     return res.json();
   },
 

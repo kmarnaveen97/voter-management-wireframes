@@ -52,6 +52,11 @@ export function usePollingStations(listId: number | null | undefined) {
     queryFn: () => api.getPollingStations(listId!),
     enabled: !!listId,
     staleTime: 2 * 60 * 1000, // Stations don't change often
+    gcTime: 300 * 60_000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }
 
@@ -64,6 +69,11 @@ export function useBoothStatistics(listId: number | null | undefined) {
     queryKey: queryKeys.polling.statsRaw(listId!),
     enabled: !!listId,
     staleTime: 60 * 1000, // Cache stats for 1 minute
+    gcTime: 300 * 60_000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     queryFn: async () => {
       const data = await api.getStatsRaw(listId!);
 
@@ -144,6 +154,11 @@ export function usePollingStationDetail(
     },
     enabled: !!listId && !!stationCode,
     staleTime: 60 * 1000,
+    gcTime: 300 * 60_000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }
 
@@ -173,6 +188,11 @@ export function useBoothVoters(
     },
     enabled: !!listId && !!boothId,
     staleTime: 30 * 1000,
+    gcTime: 300 * 60_000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }
 

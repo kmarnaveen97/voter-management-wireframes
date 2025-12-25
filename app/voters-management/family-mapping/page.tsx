@@ -7,6 +7,7 @@ import React, {
   useRef,
   useCallback,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Users,
   Search,
@@ -37,6 +38,7 @@ import {
   UserCheck,
   Users2,
   ChevronDown,
+  WifiOff,
 } from "lucide-react";
 import { api, type Family, type Voter } from "@/lib/api";
 import { useListContext } from "@/contexts/list-context";
@@ -83,6 +85,8 @@ function HouseSidebar({
   loading,
   isCollapsed,
   onToggleCollapse,
+  isOnline,
+  hasError,
 }: {
   families: Family[];
   selectedFamily: Family | null;
@@ -95,6 +99,8 @@ function HouseSidebar({
   loading: boolean;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  isOnline: boolean;
+  hasError: boolean;
 }) {
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [sortBy, setSortBy] = useState<"house" | "members" | "name">("house");
@@ -227,7 +233,7 @@ function HouseSidebar({
                   />
                 </div>
                 {!isCollapsed && (
-                  <div>
+                  <div className="flex-1" suppressHydrationWarning>
                     <h1 className="text-lg font-bold tracking-tight">
                       Family Mapping
                     </h1>
@@ -235,6 +241,21 @@ function HouseSidebar({
                       Interactive Tree Explorer
                     </p>
                   </div>
+                )}
+                {!isCollapsed && !isOnline && (
+                  <Badge variant="destructive" className="text-[10px] shrink-0">
+                    <WifiOff className="w-3 h-3 mr-1" />
+                    Offline
+                  </Badge>
+                )}
+                {!isCollapsed && isOnline && hasError && (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] shrink-0 text-orange-600 border-orange-600"
+                  >
+                    <AlertCircle className="w-3 h-3 mr-1" />
+                    Connection Issues
+                  </Badge>
                 )}
               </div>
               {!isCollapsed && (
@@ -647,6 +668,23 @@ export default function FamilyMappingPage() {
   const [error, setError] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  // Network monitoring state
+  const [isOnline, setIsOnline] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // Network monitoring effect
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    setIsOnline(navigator.onLine);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
   // Canvas State
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -660,67 +698,91 @@ export default function FamilyMappingPage() {
     [familyMembers]
   );
 
-  // Fetch families
-  const fetchFamilies = useCallback(async () => {
-    if (!selectedListId || listLoading) return;
+  // Fetch families with React Query
+  const familiesQuery = useQuery({
+    queryKey: ["family-mapping-families", selectedListId],
+    queryFn: async () => {
+      if (!selectedListId) return { families: [], wards: [] };
 
-    setLoading(true);
-    setError(null);
-
-    try {
       // Fetch all families (with larger page size)
       const data = await api.getFamilies(1, 500, selectedListId);
-      setFamilies(data.families || []);
+      const families = data.families || [];
 
       // Extract unique wards
-      const wardSet = new Set(data.families?.map((f) => f.ward_no) || []);
+      const wardSet = new Set(families.map((f) => f.ward_no));
       const sortedWards = Array.from(wardSet).sort(
         (a, b) => parseInt(a) - parseInt(b)
       );
-      setWards(sortedWards);
-    } catch (err) {
-      console.error("Failed to fetch families:", err);
-      setError("Failed to load families. Please check your connection.");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedListId, listLoading]);
 
-  // Fetch family members when a family is selected
-  const fetchFamilyMembers = useCallback(
-    async (family: Family) => {
-      if (!selectedListId) return;
-
-      setLoadingMembers(true);
-
-      try {
-        const data = await api.getFamilyMembers(
-          family.ward_no,
-          family.house_no,
-          selectedListId
-        );
-        setFamilyMembers(data.members || []);
-      } catch (err) {
-        console.error("Failed to fetch family members:", err);
-        setFamilyMembers([]);
-      } finally {
-        setLoadingMembers(false);
-      }
+      return { families, wards: sortedWards };
     },
-    [selectedListId]
-  );
+    enabled: !!selectedListId && !listLoading,
+    staleTime: 30_000,
+    gcTime: 300 * 60_000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  });
 
-  // Initialize data
+  // Update families and wards when query data changes
   useEffect(() => {
-    fetchFamilies();
-  }, [fetchFamilies]);
-
-  // Fetch members when family is selected
-  useEffect(() => {
-    if (selectedFamily) {
-      fetchFamilyMembers(selectedFamily);
+    if (familiesQuery.data) {
+      setFamilies(familiesQuery.data.families);
+      setWards(familiesQuery.data.wards);
+      setLastUpdated(new Date());
     }
-  }, [selectedFamily, fetchFamilyMembers]);
+  }, [familiesQuery.data]);
+
+  // Update loading and error states
+  useEffect(() => {
+    setLoading(familiesQuery.isLoading);
+    setError(
+      familiesQuery.isError
+        ? "Failed to load families. Please check your connection."
+        : null
+    );
+  }, [familiesQuery.isLoading, familiesQuery.isError]);
+
+  // Fetch family members with React Query
+  const familyMembersQuery = useQuery({
+    queryKey: [
+      "family-members",
+      selectedListId,
+      selectedFamily?.ward_no,
+      selectedFamily?.house_no,
+    ],
+    queryFn: async () => {
+      if (!selectedListId || !selectedFamily) return [];
+
+      const data = await api.getFamilyMembers(
+        selectedFamily.ward_no,
+        selectedFamily.house_no,
+        selectedListId
+      );
+      return data.members || [];
+    },
+    enabled: !!selectedListId && !!selectedFamily,
+    staleTime: 30_000,
+    gcTime: 300 * 60_000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  });
+
+  // Update family members when query data changes
+  useEffect(() => {
+    if (familyMembersQuery.data) {
+      setFamilyMembers(familyMembersQuery.data);
+      setLastUpdated(new Date());
+    }
+  }, [familyMembersQuery.data]);
+
+  // Update loading members state
+  useEffect(() => {
+    setLoadingMembers(familyMembersQuery.isLoading);
+  }, [familyMembersQuery.isLoading]);
 
   // Reset view when family changes
   useEffect(() => {
@@ -772,6 +834,8 @@ export default function FamilyMappingPage() {
         loading={loading}
         isCollapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        isOnline={isOnline}
+        hasError={familiesQuery.isError || familyMembersQuery.isError}
       />
 
       {/* Main Content */}

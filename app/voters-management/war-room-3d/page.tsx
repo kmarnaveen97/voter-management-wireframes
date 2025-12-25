@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
+import { useQuery } from "@tanstack/react-query";
 import {
   Map as MapIcon,
   Loader2,
@@ -22,6 +23,8 @@ import {
   Menu,
   BarChart3,
   Heart,
+  WifiOff,
+  AlertCircle,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
@@ -150,6 +153,10 @@ export default function WarRoom3DPage() {
   // Our candidate ID (for support sentiment tagging)
   const [ourCandidateId, setOurCandidateId] = useState<number | null>(null);
 
+  // Network monitoring state
+  const [isOnline, setIsOnline] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
   // Loading States
   const [loading, setLoading] = useState(true);
   const [boothsLoading, setBoothsLoading] = useState(false);
@@ -183,9 +190,91 @@ export default function WarRoom3DPage() {
     fetchOurCandidate();
   }, [selectedListId]);
 
-  // Fetch Wards Data
+  // Network monitoring effect
   useEffect(() => {
-    // Reset all drill-down state whenever selectedListId changes to prevent stale data
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    setIsOnline(navigator.onLine);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // Fetch Wards Data with React Query
+  const wardsQuery = useQuery({
+    queryKey: ["3d-wards", selectedListId],
+    queryFn: async () => {
+      if (!selectedListId) return [];
+      const { wards } = await api.getMapWards(selectedListId);
+
+      // Sort wards numerically (1, 2, 3, ..., 10, 11) instead of string order (1, 10, 11, ..., 2)
+      const sortedWards = [...wards].sort((a, b) => {
+        const numA = parseInt(a.ward_no, 10);
+        const numB = parseInt(b.ward_no, 10);
+        // Handle non-numeric ward numbers gracefully
+        if (isNaN(numA) && isNaN(numB))
+          return a.ward_no.localeCompare(b.ward_no);
+        if (isNaN(numA)) return 1;
+        if (isNaN(numB)) return -1;
+        return numA - numB;
+      });
+
+      // Calculate spiral layout for wards (Golden Spiral)
+      // This handles any number of wards gracefully without creating a huge empty ring
+      const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+      const wardSpacing = 6; // Diameter 5 + spacing
+
+      const mappedWards: Ward3DData[] = sortedWards.map((ward, index) => {
+        // Spiral position
+        const radius = wardSpacing * Math.sqrt(index); // Start from center (index 0 -> radius 0)
+        const angle = index * goldenAngle;
+
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+
+        return {
+          wardNo: String(ward.ward_no),
+          position: [x, 0, z], // On the ground, arranged in a circle
+          sentiment: getDominantSentiment(
+            ward.support_count,
+            ward.oppose_count,
+            ward.swing_count
+          ),
+          voterCount: ward.total_voters || 0,
+          supportCount: ward.support_count || 0,
+          opposeCount: ward.oppose_count || 0,
+          swingCount: ward.swing_count || 0,
+          unknownCount: ward.unknown_count || 0,
+          supportPercent: ward.total_voters
+            ? (ward.support_count / ward.total_voters) * 100
+            : 0,
+        };
+      });
+
+      return mappedWards;
+    },
+    enabled: !!selectedListId,
+    staleTime: 30_000,
+    gcTime: 300 * 60_000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  });
+
+  // Update wards3D state when query data changes
+  useEffect(() => {
+    if (wardsQuery.data) {
+      setWards3D(wardsQuery.data);
+      setLastUpdated(new Date());
+    }
+  }, [wardsQuery.data]);
+
+  // Reset drill-down state when selectedListId changes
+  useEffect(() => {
     setViewMode("wards");
     setSelectedWard(null);
     setSelectedBooth(null);
@@ -193,74 +282,85 @@ export default function WarRoom3DPage() {
     setFamilyData([]);
     setCameraTarget(null);
     setHoveredWard(null);
+  }, [selectedListId]);
 
-    const fetchWards = async () => {
-      if (!selectedListId) {
-        setLoading(false);
-        return;
-      }
-      try {
-        setLoading(true);
-        const { wards } = await api.getMapWards(selectedListId);
+  // Update loading state
+  useEffect(() => {
+    setLoading(wardsQuery.isLoading);
+  }, [wardsQuery.isLoading]);
 
-        // Sort wards numerically (1, 2, 3, ..., 10, 11) instead of string order (1, 10, 11, ..., 2)
-        const sortedWards = [...wards].sort((a, b) => {
-          const numA = parseInt(a.ward_no, 10);
-          const numB = parseInt(b.ward_no, 10);
-          // Handle non-numeric ward numbers gracefully
-          if (isNaN(numA) && isNaN(numB))
-            return a.ward_no.localeCompare(b.ward_no);
-          if (isNaN(numA)) return 1;
-          if (isNaN(numB)) return -1;
-          return numA - numB;
-        });
+  // React Query for booth data with offline support
+  const boothsQuery = useQuery({
+    queryKey: ["3d-booths", selectedListId, selectedWard],
+    queryFn: async () => {
+      if (!selectedListId || !selectedWard) return [];
 
-        // Calculate spiral layout for wards (Golden Spiral)
-        // This handles any number of wards gracefully without creating a huge empty ring
-        const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-        const wardSpacing = 6; // Diameter 5 + spacing
+      const data = await api.getPollingBoothStats(selectedListId, {
+        ward_no: selectedWard,
+      });
 
-        const mappedWards: Ward3DData[] = sortedWards.map((ward, index) => {
+      // Map booth stats to spiral layout
+      const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+      const boothSpacing = 4; // Diameter 3 + spacing
+
+      const mappedBooths: Booth3DData[] = (data.booths || []).map(
+        (booth, index) => {
           // Spiral position
-          const radius = wardSpacing * Math.sqrt(index); // Start from center (index 0 -> radius 0)
+          const radius = boothSpacing * Math.sqrt(index);
           const angle = index * goldenAngle;
 
           const x = Math.cos(angle) * radius;
           const z = Math.sin(angle) * radius;
 
           return {
-            wardNo: String(ward.ward_no),
-            position: [x, 0, z], // On the ground, arranged in a circle
+            // Use unique polling_booth_id for API lookups
+            boothId: String(booth.polling_booth_id || booth.booth_id || index),
+            name: booth.booth_name || `Booth ${booth.polling_booth_id}`,
+            position: [x, 0, z], // Circular layout
             sentiment: getDominantSentiment(
-              ward.support_count,
-              ward.oppose_count,
-              ward.swing_count
+              booth.support_count,
+              booth.oppose_count,
+              booth.swing_count
             ),
-            voterCount: ward.total_voters || 0,
-            supportCount: ward.support_count || 0,
-            opposeCount: ward.oppose_count || 0,
-            swingCount: ward.swing_count || 0,
-            unknownCount: ward.unknown_count || 0,
-            supportPercent: ward.total_voters
-              ? (ward.support_count / ward.total_voters) * 100
+            voterCount: booth.total_voters || 0,
+            supportCount: booth.support_count || 0,
+            opposeCount: booth.oppose_count || 0,
+            swingCount: booth.swing_count || 0,
+            unknownCount: booth.unknown_count || 0,
+            supportPercent: booth.total_voters
+              ? ((booth.support_count || 0) / booth.total_voters) * 100
               : 0,
           };
-        });
+        }
+      );
 
-        setWards3D(mappedWards);
-      } catch (err) {
-        console.error("Failed to fetch 3D war room data", err);
-      } finally {
-        setLoading(false);
-      }
-    };
+      return mappedBooths;
+    },
+    enabled: !!selectedListId && !!selectedWard,
+    staleTime: 30_000,
+    gcTime: 300 * 60_000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  });
 
-    fetchWards();
-  }, [selectedListId, retryTrigger]);
+  // Update booth data when query changes
+  useEffect(() => {
+    if (boothsQuery.data) {
+      setBoothData(boothsQuery.data);
+      setLastUpdated(new Date());
+    }
+  }, [boothsQuery.data]);
+
+  // Update booths loading state
+  useEffect(() => {
+    setBoothsLoading(boothsQuery.isLoading);
+  }, [boothsQuery.isLoading]);
 
   // Handle Ward Selection (Drill down to Booths)
   const handleSelectWard = useCallback(
-    async (wardNo: string | null) => {
+    (wardNo: string | null) => {
       // If clicking same ward or null, just reset
       if (!wardNo || (selectedWard === wardNo && viewMode === "wards")) {
         setSelectedWard(wardNo);
@@ -270,219 +370,189 @@ export default function WarRoom3DPage() {
 
       setSelectedWard(wardNo);
 
-      if (wardNo && selectedListId) {
+      if (wardNo) {
         setCameraTarget([0, 0, 0]); // Center view for new scene
-        setBoothsLoading(true);
-
-        try {
-          // Fetch booth stats for this ward
-          const data = await api.getPollingBoothStats(selectedListId, {
-            ward_no: wardNo,
-          });
-
-          // Map booth stats to spiral layout
-          const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-          const boothSpacing = 4; // Diameter 3 + spacing
-
-          const mappedBooths: Booth3DData[] = (data.booths || []).map(
-            (booth, index) => {
-              // Spiral position
-              const radius = boothSpacing * Math.sqrt(index);
-              const angle = index * goldenAngle;
-
-              const x = Math.cos(angle) * radius;
-              const z = Math.sin(angle) * radius;
-
-              return {
-                // Use unique polling_booth_id for API lookups
-                boothId: String(
-                  booth.polling_booth_id || booth.booth_id || index
-                ),
-                name: booth.booth_name || `Booth ${booth.polling_booth_id}`,
-                position: [x, 0, z], // Circular layout
-                sentiment: getDominantSentiment(
-                  booth.support_count,
-                  booth.oppose_count,
-                  booth.swing_count
-                ),
-                voterCount: booth.total_voters || 0,
-                supportCount: booth.support_count || 0,
-                opposeCount: booth.oppose_count || 0,
-                swingCount: booth.swing_count || 0,
-                unknownCount: booth.unknown_count || 0,
-                supportPercent: booth.total_voters
-                  ? ((booth.support_count || 0) / booth.total_voters) * 100
-                  : 0,
-              };
-            }
-          );
-
-          setBoothData(mappedBooths);
-          setViewMode("booths");
-        } catch (err) {
-          console.error("Failed to fetch booth stats", err);
-        } finally {
-          setBoothsLoading(false);
-        }
+        setViewMode("booths");
       } else {
         setCameraTarget(null);
         setViewMode("wards");
       }
     },
-    [wards3D, selectedListId, selectedWard, viewMode]
+    [selectedWard, viewMode]
   );
+
+  // React Query for family data with offline support
+  const familiesQuery = useQuery({
+    queryKey: ["3d-families", selectedListId, selectedWard, selectedBooth],
+    queryFn: async () => {
+      if (!selectedListId || !selectedWard || !selectedBooth) return [];
+
+      // Fetch booth details with voters to construct families
+      // Note: fetching up to 2000 voters per booth should cover most cases
+      const { voters } = await api.getPollingBooth(
+        selectedBooth,
+        selectedListId,
+        {
+          include_voters: true,
+          per_page: 2000,
+        }
+      );
+
+      if (!voters || voters.length === 0) {
+        return [];
+      }
+
+      // Group voters by house_no
+      const housesMap = new Map<
+        string,
+        {
+          houseNo: string;
+          voterCount: number;
+          sentimentCounts: Record<SentimentType, number>;
+          members: any[];
+        }
+      >();
+
+      voters.forEach((voter) => {
+        const houseNo = voter.house_no || "Unknown";
+        if (!housesMap.has(houseNo)) {
+          housesMap.set(houseNo, {
+            houseNo,
+            voterCount: 0,
+            sentimentCounts: {
+              support: 0,
+              oppose: 0,
+              swing: 0,
+              unknown: 0,
+              neutral: 0,
+            },
+            members: [],
+          });
+        }
+
+        const house = housesMap.get(houseNo)!;
+        house.voterCount++;
+        house.members.push(voter);
+
+        const sentiment = (voter.sentiment || "unknown") as SentimentType;
+        if (house.sentimentCounts[sentiment] !== undefined) {
+          house.sentimentCounts[sentiment]++;
+        } else {
+          house.sentimentCounts.unknown++;
+        }
+      });
+
+      // Convert map to array and sort by sentiment for clustering
+      const validHouses = Array.from(housesMap.values());
+
+      // Sort houses by dominant sentiment for neighborhood clustering
+      const sentimentOrder: Record<SentimentType, number> = {
+        support: 0,
+        oppose: 1,
+        swing: 2,
+        neutral: 3,
+        unknown: 4,
+      };
+
+      const sortedHouses = [...validHouses].sort((a, b) => {
+        const aSentiment = getDominantSentiment(
+          a.sentimentCounts.support,
+          a.sentimentCounts.oppose,
+          a.sentimentCounts.swing
+        );
+        const bSentiment = getDominantSentiment(
+          b.sentimentCounts.support,
+          b.sentimentCounts.oppose,
+          b.sentimentCounts.swing
+        );
+        return sentimentOrder[aSentiment] - sentimentOrder[bSentiment];
+      });
+
+      // Map to improved neighborhood layout
+      const totalHouses = sortedHouses.length;
+
+      // Calculate grid-like neighborhood with streets
+      const housesPerRow = Math.ceil(Math.sqrt(totalHouses * 1.5));
+      const streetWidth = 1.5; // Space between rows (streets)
+      const houseSpacing = 2.5; // Space between houses in a row
+
+      const mappedFamilies: Family3DData[] = sortedHouses.map(
+        (house, index) => {
+          // Grid layout with offset rows (like real neighborhoods)
+          const row = Math.floor(index / housesPerRow);
+          const col = index % housesPerRow;
+
+          // Offset every other row for more organic look
+          const rowOffset = row % 2 === 0 ? 0 : houseSpacing * 0.5;
+
+          // Calculate position with street spacing
+          const x = (col - housesPerRow / 2) * houseSpacing + rowOffset;
+          const z =
+            (row - Math.ceil(totalHouses / housesPerRow) / 2) *
+            (houseSpacing + streetWidth);
+
+          // Determine Head of Family (Oldest Member)
+          const sortedMembers = house.members.sort(
+            (a, b) => (b.age || 0) - (a.age || 0)
+          );
+          const head = sortedMembers[0];
+          const headName = head
+            ? head.name || head.name_hindi || "Unknown"
+            : "Unknown";
+
+          return {
+            id: house.houseNo,
+            houseNo: house.houseNo,
+            headOfFamily: headName,
+            // Pass member details for hover card
+            members: house.members.map((m) => ({
+              voter_id: m.voter_id,
+              name: m.name || m.name_hindi || "Unknown",
+              age: m.age || 0,
+              gender: m.gender || "Unknown",
+              sentiment: (m.sentiment as SentimentType) || "unknown",
+            })),
+            position: [x, 0, z], // Neighborhood grid layout
+            sentiment: getDominantSentiment(
+              house.sentimentCounts.support,
+              house.sentimentCounts.oppose,
+              house.sentimentCounts.swing
+            ),
+            voterCount: house.voterCount,
+            supportCount: house.sentimentCounts.support,
+            opposeCount: house.sentimentCounts.oppose,
+            swingCount: house.sentimentCounts.swing,
+            unknownCount: house.sentimentCounts.unknown,
+          };
+        }
+      );
+
+      return mappedFamilies;
+    },
+    enabled: !!selectedListId && !!selectedWard && !!selectedBooth,
+    staleTime: 30_000,
+    gcTime: 300 * 60_000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  });
+
+  // Update family data when query changes
+  useEffect(() => {
+    if (familiesQuery.data) {
+      setFamilyData(familiesQuery.data);
+      setLastUpdated(new Date());
+    }
+  }, [familiesQuery.data]);
 
   // Handle Booth Selection (Drill down to Families)
   const handleSelectBooth = useCallback(
-    async (boothId: string) => {
+    (boothId: string) => {
       if (!selectedListId || !selectedWard) return;
       setSelectedBooth(boothId);
       setCameraTarget([0, 0, 0]); // Reset camera for new view
-
-      try {
-        // Fetch booth details with voters to construct families
-        // Note: fetching up to 2000 voters per booth should cover most cases
-        const { voters } = await api.getPollingBooth(boothId, selectedListId, {
-          include_voters: true,
-          per_page: 2000,
-        });
-
-        if (!voters || voters.length === 0) {
-          setFamilyData([]);
-          setViewMode("families");
-          return;
-        }
-
-        // Group voters by house_no
-        const housesMap = new Map<
-          string,
-          {
-            houseNo: string;
-            voterCount: number;
-            sentimentCounts: Record<SentimentType, number>;
-            members: any[];
-          }
-        >();
-
-        voters.forEach((voter) => {
-          const houseNo = voter.house_no || "Unknown";
-          if (!housesMap.has(houseNo)) {
-            housesMap.set(houseNo, {
-              houseNo,
-              voterCount: 0,
-              sentimentCounts: {
-                support: 0,
-                oppose: 0,
-                swing: 0,
-                unknown: 0,
-                neutral: 0,
-              },
-              members: [],
-            });
-          }
-
-          const house = housesMap.get(houseNo)!;
-          house.voterCount++;
-          house.members.push(voter);
-
-          const sentiment = (voter.sentiment || "unknown") as SentimentType;
-          if (house.sentimentCounts[sentiment] !== undefined) {
-            house.sentimentCounts[sentiment]++;
-          } else {
-            house.sentimentCounts.unknown++;
-          }
-        });
-
-        // Convert map to array and sort by sentiment for clustering
-        const validHouses = Array.from(housesMap.values());
-
-        // Sort houses by dominant sentiment for neighborhood clustering
-        const sentimentOrder: Record<SentimentType, number> = {
-          support: 0,
-          oppose: 1,
-          swing: 2,
-          neutral: 3,
-          unknown: 4,
-        };
-
-        const sortedHouses = [...validHouses].sort((a, b) => {
-          const aSentiment = getDominantSentiment(
-            a.sentimentCounts.support,
-            a.sentimentCounts.oppose,
-            a.sentimentCounts.swing
-          );
-          const bSentiment = getDominantSentiment(
-            b.sentimentCounts.support,
-            b.sentimentCounts.oppose,
-            b.sentimentCounts.swing
-          );
-          return sentimentOrder[aSentiment] - sentimentOrder[bSentiment];
-        });
-
-        // Map to improved neighborhood layout
-        const totalHouses = sortedHouses.length;
-
-        // Calculate grid-like neighborhood with streets
-        const housesPerRow = Math.ceil(Math.sqrt(totalHouses * 1.5));
-        const streetWidth = 1.5; // Space between rows (streets)
-        const houseSpacing = 2.5; // Space between houses in a row
-
-        const mappedFamilies: Family3DData[] = sortedHouses.map(
-          (house, index) => {
-            // Grid layout with offset rows (like real neighborhoods)
-            const row = Math.floor(index / housesPerRow);
-            const col = index % housesPerRow;
-
-            // Offset every other row for more organic look
-            const rowOffset = row % 2 === 0 ? 0 : houseSpacing * 0.5;
-
-            // Calculate position with street spacing
-            const x = (col - housesPerRow / 2) * houseSpacing + rowOffset;
-            const z =
-              (row - Math.ceil(totalHouses / housesPerRow) / 2) *
-              (houseSpacing + streetWidth);
-
-            // Determine Head of Family (Oldest Member)
-            const sortedMembers = house.members.sort(
-              (a, b) => (b.age || 0) - (a.age || 0)
-            );
-            const head = sortedMembers[0];
-            const headName = head
-              ? head.name || head.name_hindi || "Unknown"
-              : "Unknown";
-
-            return {
-              id: house.houseNo,
-              houseNo: house.houseNo,
-              headOfFamily: headName,
-              // Pass member details for hover card
-              members: house.members.map((m) => ({
-                voter_id: m.voter_id,
-                name: m.name || m.name_hindi || "Unknown",
-                age: m.age || 0,
-                gender: m.gender || "Unknown",
-                sentiment: (m.sentiment as SentimentType) || "unknown",
-              })),
-              position: [x, 0, z], // Neighborhood grid layout
-              sentiment: getDominantSentiment(
-                house.sentimentCounts.support,
-                house.sentimentCounts.oppose,
-                house.sentimentCounts.swing
-              ),
-              voterCount: house.voterCount,
-              supportCount: house.sentimentCounts.support,
-              opposeCount: house.sentimentCounts.oppose,
-              swingCount: house.sentimentCounts.swing,
-              unknownCount: house.sentimentCounts.unknown,
-            };
-          }
-        );
-
-        setFamilyData(mappedFamilies);
-        setViewMode("families");
-      } catch (err) {
-        console.error("Failed to fetch families", err);
-      }
+      setViewMode("families");
     },
     [selectedListId, selectedWard]
   );
@@ -788,7 +858,24 @@ export default function WarRoom3DPage() {
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <h1 className="font-bold text-lg">3D War Room</h1>
+          <div className="flex-1" suppressHydrationWarning>
+            <h1 className="font-bold text-lg">3D War Room</h1>
+          </div>
+          {!isOnline && (
+            <Badge variant="destructive" className="text-[10px]">
+              <WifiOff className="w-3 h-3 mr-1" />
+              Offline
+            </Badge>
+          )}
+          {isOnline && wardsQuery.isError && (
+            <Badge
+              variant="outline"
+              className="text-[10px] text-orange-600 border-orange-600"
+            >
+              <AlertCircle className="w-3 h-3 mr-1" />
+              Connection Issues
+            </Badge>
+          )}
         </div>
 
         {viewMode !== "wards" && (

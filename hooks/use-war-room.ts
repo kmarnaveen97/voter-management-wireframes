@@ -53,7 +53,11 @@ export function useWarRoomData(listId: number | null | undefined) {
     queryFn: () => api.getSentimentOverview(listId!),
     enabled: !!listId,
     staleTime: 30_000,
-    gcTime: 5 * 60_000,
+    gcTime: 300 * 60_000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   // Query: Ward Map Data
@@ -65,7 +69,11 @@ export function useWarRoomData(listId: number | null | undefined) {
     },
     enabled: !!listId,
     staleTime: 30_000,
-    gcTime: 5 * 60_000,
+    gcTime: 300 * 60_000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   // Query: Houses for all wards (depends on wards query)
@@ -100,7 +108,11 @@ export function useWarRoomData(listId: number | null | undefined) {
     },
     enabled: !!listId && !!wardsQuery.data && wardsQuery.data.length > 0,
     staleTime: 30_000,
-    gcTime: 5 * 60_000,
+    gcTime: 300 * 60_000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   // Query: Target Voters
@@ -112,7 +124,11 @@ export function useWarRoomData(listId: number | null | undefined) {
     },
     enabled: !!listId,
     staleTime: 30_000,
-    gcTime: 5 * 60_000,
+    gcTime: 300 * 60_000, // Keep in cache for 30 minutes
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   // Combined loading/error states
@@ -190,6 +206,8 @@ export function useTagHouseSentiment(listId: number | null | undefined) {
       candidateId,
     }: TagHouseSentimentParams) => {
       if (!listId) throw new Error("No list selected");
+      if (sentiment === "unknown")
+        throw new Error("Cannot tag with 'unknown' sentiment");
 
       // Get family members and bulk tag them
       const family = await api.getFamilyMembers(wardNo, houseNo, listId);
@@ -366,6 +384,8 @@ export function useTagSingleVoter(listId: number | null | undefined) {
       candidateId,
     }: TagSingleVoterParams) => {
       if (!listId) throw new Error("No list selected");
+      if (sentiment === "unknown")
+        throw new Error("Cannot tag with 'unknown' sentiment");
       return api.bulkTagVoters({
         voter_ids: [voterId],
         sentiment,
